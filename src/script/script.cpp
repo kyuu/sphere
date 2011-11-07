@@ -392,8 +392,8 @@ static SQInteger script_rect__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// Rect._marshal(rect, stream)
-static SQInteger script_rect__marshal(HSQUIRRELVM v)
+// Rect._dump(rect, stream)
+static SQInteger script_rect__dump(HSQUIRRELVM v)
 {
     // get rect
     if (!IsRect(v, 2)) {
@@ -431,8 +431,8 @@ throw_write_error:
 }
 
 //-----------------------------------------------------------------
-// Rect._unmarshal(stream)
-static SQInteger script_rect__unmarshal(HSQUIRRELVM v)
+// Rect._load(stream)
+static SQInteger script_rect__load(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
@@ -1014,8 +1014,8 @@ static SQInteger script_vec2__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// Vec2._marshal(vec2, stream)
-static SQInteger script_vec2__marshal(HSQUIRRELVM v)
+// Vec2._dump(vec2, stream)
+static SQInteger script_vec2__dump(HSQUIRRELVM v)
 {
     // get vec2
     if (!IsVec2(v, 2)) {
@@ -1053,8 +1053,8 @@ throw_write_error:
 }
 
 //-----------------------------------------------------------------
-// Vec2._unmarshal(stream)
-static SQInteger script_vec2__unmarshal(HSQUIRRELVM v)
+// Vec2._load(stream)
+static SQInteger script_vec2__load(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
@@ -2088,7 +2088,9 @@ static SQInteger script_blob__set(HSQUIRRELVM v)
                 return sq_throwerror(v, _SC("invalid parameter <value>"));
             }
 
-            This->resize(value);
+            if (!This->resize(value)) {
+                return sq_throwerror(v, _SC("out of memory"));
+            }
         } else {
             // index not found
             sq_pushnull(v);
@@ -2195,8 +2197,8 @@ static SQInteger script_blob__cloned(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// Blob._marshal(blob, stream)
-static SQInteger script_blob__marshal(HSQUIRRELVM v)
+// Blob._dump(blob, stream)
+static SQInteger script_blob__dump(HSQUIRRELVM v)
 {
     // get blob
     if (!IsBlob(v, 2)) {
@@ -2236,8 +2238,8 @@ throw_write_error:
 }
 
 //-----------------------------------------------------------------
-// Blob._unmarshal(stream)
-static SQInteger script_blob__unmarshal(HSQUIRRELVM v)
+// Blob._load(stream)
+static SQInteger script_blob__load(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
@@ -2497,8 +2499,8 @@ static SQInteger script_rgba__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// RGBA._marshal(rgba, stream)
-static SQInteger script_rgba__marshal(HSQUIRRELVM v)
+// RGBA._dump(rgba, stream)
+static SQInteger script_rgba__dump(HSQUIRRELVM v)
 {
     // get rgba
     if (!IsRGBA(v, 2)) {
@@ -2535,8 +2537,8 @@ throw_write_error:
 }
 
 //-----------------------------------------------------------------
-// RGBA._unmarshal(stream)
-static SQInteger script_rgba__unmarshal(HSQUIRRELVM v)
+// RGBA._load(stream)
+static SQInteger script_rgba__load(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
@@ -2608,7 +2610,6 @@ static SQInteger script_canvas_destructor(SQUserPointer p, SQInteger size)
 
 //-----------------------------------------------------------------
 // Canvas(width, height [, pixels])
-// Canvas(filename)
 static SQInteger script_canvas_constructor(HSQUIRRELVM v)
 {
     // ensure that this function is only ever called on uninitialized Blob instances
@@ -2618,64 +2619,46 @@ static SQInteger script_canvas_constructor(HSQUIRRELVM v)
     }
     assert(!This);
 
-    if (sq_gettype(v, 2) == OT_STRING) { // assume the call is: Canvas(filename)
-        // get filename
-        const SQChar* filename = 0;
-        if (sq_gettype(v, 2) != OT_STRING) {
-            return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
-        }
-        sq_getstring(v, 2, &filename);
-        if (sq_getsize(v, 2) == 0) { // empty filename
-            return sq_throwerror(v, _SC("invalid parameter <filename>"));
-        }
+    // get width
+    SQInteger width;
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
+    }
+    sq_getinteger(v, 2, &width);
+    if (width <= 0) {
+        return sq_throwerror(v, _SC("invalid parameter <width>"));
+    }
 
-        This = Canvas::Load(filename);
-        if (!This) {
-            return sq_throwerror(v, _SC("failed to load canvas"));
-        }
+    // get height
+    SQInteger height;
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
+    }
+    sq_getinteger(v, 3, &height);
+    if (height <= 0) {
+        return sq_throwerror(v, _SC("invalid parameter <height>"));
+    }
 
-    } else { // assume the call is: Canvas(width, height [, pixels])
-        // get width
-        SQInteger width;
-        if (sq_gettype(v, 2) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <width>"));
+    // get optional pixels
+    Blob* pixels = 0;
+    if (sq_gettop(v) >= 4) {
+        if (!IsBlob(v, 4)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <pixels>"));
         }
-        sq_getinteger(v, 2, &width);
-        if (width <= 0) {
-            return sq_throwerror(v, _SC("invalid parameter <width>"));
+        pixels = GetBlob(v, 4);
+        assert(pixels);
+        if (pixels->getSize() != width * height * Canvas::GetNumBytesPerPixel()) {
+            return sq_throwerror(v, _SC("invalid parameter <pixels>"));
         }
+    }
 
-        // get height
-        SQInteger height;
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <height>"));
-        }
-        sq_getinteger(v, 3, &height);
-        if (height <= 0) {
-            return sq_throwerror(v, _SC("invalid parameter <height>"));
-        }
+    This = Canvas::Create(width, height);
+    if (!This) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
 
-        // get optional pixels
-        Blob* pixels = 0;
-        if (sq_gettop(v) >= 4) {
-            if (!IsBlob(v, 4)) {
-                return sq_throwerror(v, _SC("invalid type of parameter <pixels>"));
-            }
-            pixels = GetBlob(v, 4);
-            assert(pixels);
-            if (pixels->getSize() != width * height * Canvas::GetNumBytesPerPixel()) {
-                return sq_throwerror(v, _SC("invalid parameter <pixels>"));
-            }
-        }
-
-        This = Canvas::Create(width, height);
-        if (!This) {
-            return sq_throwerror(v, _SC("out of memory"));
-        }
-
-        if (pixels) {
-            memcpy(This->getPixels(), pixels->getBuffer(), pixels->getSize());
-        }
+    if (pixels) {
+        memcpy(This->getPixels(), pixels->getBuffer(), pixels->getSize());
     }
 
     sq_setinstanceup(v, 1, (SQUserPointer)This);
@@ -3087,8 +3070,8 @@ static SQInteger script_canvas__cloned(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// Canvas._marshal(canvas, stream)
-static SQInteger script_canvas__marshal(HSQUIRRELVM v)
+// Canvas._dump(canvas, stream)
+static SQInteger script_canvas__dump(HSQUIRRELVM v)
 {
     // get canvas
     if (!IsCanvas(v, 2)) {
@@ -3131,8 +3114,8 @@ throw_write_error:
 }
 
 //-----------------------------------------------------------------
-// Canvas._unmarshal(stream)
-static SQInteger script_canvas__unmarshal(HSQUIRRELVM v)
+// Canvas._load(stream)
+static SQInteger script_canvas__load(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
@@ -3471,11 +3454,12 @@ static SQInteger script_file__typeof(HSQUIRRELVM v)
 // File._cloned(file)
 static SQInteger script_file__cloned(HSQUIRRELVM v)
 {
+    // ensure that this function is only ever called on uninitialized File instances
     IFile* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE)) || This != 0) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
-    assert(This);
+    assert(!This);
 
     return sq_throwerror(v, _SC("files can not be cloned"));
 }
@@ -3905,7 +3889,7 @@ static SQInteger script_DrawTriangle(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// DrawTexturedTriangle(texture, pos1, pos2, pos3, texcoord1, texcoord2, texcoord3 [, mask_col])
+// DrawTexturedTriangle(texture, texcoord1, texcoord2, texcoord3, pos1, pos2, pos3 [, mask_col])
 static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
 {
     // get texture
@@ -3915,58 +3899,58 @@ static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
     ITexture* texture = GetTexture(v, 2);
     assert(texture);
 
-    // get pos1
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
-    }
-    Vec2i* pos1 = GetVec2(v, 3);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 4);
-    assert(pos2);
-
-    // get pos3
-    if (!IsVec2(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
-    }
-    Vec2i* pos3 = GetVec2(v, 5);
-    assert(pos3);
-
-    Vec2i positions[3] = {
-        *pos1,
-        *pos2,
-        *pos3,
-    };
-
     // get texcoord1
-    if (!IsVec2(v, 6)) {
+    if (!IsVec2(v, 3)) {
         return sq_throwerror(v, _SC("invalid type of parameter <texcoord1>"));
     }
-    Vec2i* texcoord1 = GetVec2(v, 6);
+    Vec2i* texcoord1 = GetVec2(v, 3);
     assert(texcoord1);
 
     // get texcoord2
-    if (!IsVec2(v, 7)) {
+    if (!IsVec2(v, 4)) {
         return sq_throwerror(v, _SC("invalid type of parameter <texcoord2>"));
     }
-    Vec2i* texcoord2 = GetVec2(v, 7);
+    Vec2i* texcoord2 = GetVec2(v, 4);
     assert(texcoord2);
 
     // get texcoord3
-    if (!IsVec2(v, 8)) {
+    if (!IsVec2(v, 5)) {
         return sq_throwerror(v, _SC("invalid type of parameter <texcoord3>"));
     }
-    Vec2i* texcoord3 = GetVec2(v, 8);
+    Vec2i* texcoord3 = GetVec2(v, 5);
     assert(texcoord3);
 
     Vec2i texcoords[3] = {
         *texcoord1,
         *texcoord2,
         *texcoord3,
+    };
+
+    // get pos1
+    if (!IsVec2(v, 6)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
+    }
+    Vec2i* pos1 = GetVec2(v, 6);
+    assert(pos1);
+
+    // get pos2
+    if (!IsVec2(v, 7)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
+    }
+    Vec2i* pos2 = GetVec2(v, 7);
+    assert(pos2);
+
+    // get pos3
+    if (!IsVec2(v, 8)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
+    }
+    Vec2i* pos3 = GetVec2(v, 8);
+    assert(pos3);
+
+    Vec2i positions[3] = {
+        *pos1,
+        *pos2,
+        *pos3,
     };
 
     // get optional mask_col
@@ -3979,7 +3963,7 @@ static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
         assert(mask_col);
     }
 
-    video::DrawTexturedTriangle(texture, positions, colors, mask_col);
+    video::DrawTexturedTriangle(texture, texcoords, positions, mask_col);
     return 0;
 }
 
@@ -4234,6 +4218,296 @@ static SQInteger script_DrawSubImageQuad(HSQUIRRELVM v)
 
 /**************************** TEXTURE *****************************/
 
+//-----------------------------------------------------------------
+static SQInteger script_texture_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((ITexture*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Texture.updatePixels(canvas [, dst_rect])
+static SQInteger script_texture_updatePixels(HSQUIRRELVM v)
+{
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get canvas
+    if (!IsCanvas(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <canvas>"));
+    }
+    Canvas* canvas = GetCanvas(v, 2);
+    assert(canvas);
+
+    // get optional dst_rect
+    Recti* dst_rect = 0;
+    if (sq_gettop(v) >= 3) {
+        if (!IsRect(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <dst_rect>"));
+        }
+        dst_rect = GetRect(v, 3);
+        assert(dst_rect);
+    }
+
+    sq_pushbool(v, This->updatePixels(canvas, dst_rect));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Texture.createCanvas()
+static SQInteger script_texture_createCanvas(HSQUIRRELVM v)
+{
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // create canvas
+    CanvasPtr canvas = This->createCanvas();
+    if (!canvas) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    if (!BindCanvas(v, canvas.get())) {
+        return sq_throwerror(v, _SC("internal error"));
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Texture._get(index)
+static SQInteger script_texture__get(HSQUIRRELVM v)
+{
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get string index
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    const SQChar* index = 0;
+    sq_getstring(v, 2, &index);
+
+    // scstrcmp is defined by squirrel
+    if (scstrcmp(index, "width") == 0) {
+        sq_pushinteger(v, This->getWidth());
+    } else if (scstrcmp(index, "height") == 0) {
+        sq_pushinteger(v, This->getHeight());
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Texture._typeof()
+static SQInteger script_texture__typeof(HSQUIRRELVM v)
+{
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("Texture"));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Texture._cloned(texture)
+static SQInteger script_texture__cloned(HSQUIRRELVM v)
+{
+    // ensure that this function is only ever called on uninitialized Texture instances
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE)) || This != 0) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(!This);
+
+    // get original texture
+    if (!IsTexture(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <texture>"));
+    }
+    Canvas* orig = GetTexture(v, 2);
+    assert(orig);
+
+    // convert original texture to canvas
+    CanvasPtr canvas = orig->createCanvas();
+    if (!canvas) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    // clone texture
+    This = CreateTexture(canvas.get());
+    if (!This) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_texture_destructor);
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Texture._tostring()
+static SQInteger script_texture__tostring(HSQUIRRELVM v)
+{
+    ITexture* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("<Texture instance>"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Texture._dump(texture, stream)
+static SQInteger script_texture__dump(HSQUIRRELVM v)
+{
+    // get texture
+    if (!IsTexture(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <texture>"));
+    }
+    ITexture* texture = GetTexture(v, 2);
+    assert(texture);
+
+    // get stream
+    if (!IsStream(v, 3)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+    }
+    IStream* stream = GetStream(v, 3);
+    assert(stream);
+    if (!stream->isOpen() || !stream->isWriteable()) {
+        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    }
+
+    // convert texture to canvas
+    CanvasPtr canvas = texture->createCanvas();
+    if (!canvas) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    // write class name
+    const char* class_name = "Texture";
+    int num_bytes = strlen(class_name);
+    if (!writeu32l(stream, num_bytes) || stream->write(class_name, num_bytes) != num_bytes) {
+        goto throw_write_error;
+    }
+
+    // write texture dimensions
+    if (!writeu32l(stream, (u32)canvas->getWidth()) ||
+        !writeu32l(stream, (u32)canvas->getHeight())) {
+        goto throw_write_error;
+    }
+
+    // write texture pixels
+    int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
+    if (stream->write(canvas->getPixels(), pixels_size) != pixels_size) {
+        goto throw_write_error;
+    }
+    return 0;
+
+throw_write_error:
+    return sq_throwerror(v, _SC("write error"));
+}
+
+//-----------------------------------------------------------------
+// Texture._load(stream)
+static SQInteger script_texture__load(HSQUIRRELVM v)
+{
+    // get stream
+    if (!IsStream(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+    }
+    IStream* stream = GetStream(v, 2);
+    assert(stream);
+    if (!stream->isOpen() || !stream->isReadable()) {
+        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    }
+
+    // read texture dimensions
+    u32 width;
+    u32 height;
+    if (!readu32l(stream, width) || !readu32l(stream, height)) {
+        goto throw_read_error;
+    }
+
+    // create a temporary canvas
+    CanvasPtr canvas = Canvas::Create(width, height);
+    if (!canvas) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    // read texture pixels into the temporary canvas
+    int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
+    if (stream->read(canvas->getPixels(), pixels_size) != pixels_size) {
+        goto throw_read_error;
+    }
+
+    // create texture from the canvas
+    TexturePtr texture = CreateTexture(canvas.get());
+    if (!texture) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    if (!BindTexture(v, texture.get()) {
+        return sq_throwerror(v, _SC("internal error"));
+    }
+    return 1;
+
+throw_read_error:
+    return sq_throwerror(v, _SC("read error"));
+}
+
+//-----------------------------------------------------------------
+bool IsTexture(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_TEXTURE;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ITexture* GetTexture(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_TEXTURE))) {
+        return (ITexture*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindTexture(HSQUIRRELVM v, ITexture* texture)
+{
+    if (!texture) {
+        return false;
+    }
+    sq_pushobject(v, g_texture_class); // push texture class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop texture class
+        return false;
+    }
+    sq_remove(v, -2); // pop texture class
+    sq_setreleasehook(v, -1, script_texture_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)texture);
+    texture->grab(); // grab a new reference
+    return true;
+}
 
 /******************************************************************
  *                                                                *
@@ -4925,7 +5199,7 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
             sq_settop(v, oldtop);
             return false;
         }
-        sq_pushstring(v, _SC("_marshal"), -1);
+        sq_pushstring(v, _SC("_dump"), -1);
         if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
             sq_settop(v, oldtop);
             return false;
@@ -5132,7 +5406,7 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
             sq_settop(v, oldtop);
             return false;
         }
-        sq_pushstring(v, _SC("_unmarshal"), -1);
+        sq_pushstring(v, _SC("_load"), -1);
         if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
             sq_settop(v, oldtop);
             return false;

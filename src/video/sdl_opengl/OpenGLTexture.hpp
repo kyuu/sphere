@@ -18,7 +18,7 @@ public:
     // ITexture implementation
     int getWidth() const;
     int getHeight() const;
-    bool updatePixels(Canvas* canvas, Recti* section = 0);
+    bool updatePixels(Canvas* canvas, Recti* dst_rect = 0);
     Canvas* createCanvas() const;
 
 private:

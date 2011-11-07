@@ -9,8 +9,7 @@ class ITexture : public IRefCounted {
 public:
     virtual int getWidth() const = 0;
     virtual int getHeight() const = 0;
-    virtual bool updatePixels(Canvas* canvas, Recti* section = 0) = 0;
-    virtual ITexture* cloneSection(const Recti& section) const = 0;
+    virtual bool updatePixels(Canvas* canvas, Recti* dst_rect = 0) = 0;
     virtual Canvas* createCanvas() const = 0;
 
 protected:

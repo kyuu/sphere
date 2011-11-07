@@ -389,7 +389,7 @@ namespace video {
     }
 
     //-----------------------------------------------------------------
-    void DrawTexturedTriangle(ITexture* texture, Vec2i pos[3], Vec2i texcoord[3], RGBA* mask_col)
+    void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], RGBA* mask_col)
     {
         if (!g_window || !texture) {
             return;

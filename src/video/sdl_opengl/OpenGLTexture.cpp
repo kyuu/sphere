@@ -44,17 +44,17 @@ OpenGLTexture::getHeight() const
 
 //-----------------------------------------------------------------
 bool
-OpenGLTexture::updatePixels(Canvas* canvas, Recti* section)
+OpenGLTexture::updatePixels(Canvas* canvas, Recti* dst_rect)
 {
     if (!canvas) {
         return false;
     }
     Recti rect(0, 0, _width - 1, _height - 1);
-    if (section) {
-        if (!rect.contains(*section)) {
+    if (dst_rect) {
+        if (!rect.contains(*dst_rect)) {
             return false;
         }
-        rect = *section;
+        rect = *dst_rect;
     }
     if (canvas->getWidth()  != rect.getWidth() ||
         canvas->getHeight() != rect.getHeight())
