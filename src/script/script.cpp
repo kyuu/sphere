@@ -4868,7 +4868,7 @@ static SQInteger script_soundeffect_destructor(SQUserPointer p, SQInteger size)
 static SQInteger script_soundeffect_play(HSQUIRRELVM v)
 {
     ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4882,7 +4882,7 @@ static SQInteger script_soundeffect_play(HSQUIRRELVM v)
 static SQInteger script_soundeffect_stop(HSQUIRRELVM v)
 {
     ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4896,7 +4896,7 @@ static SQInteger script_soundeffect_stop(HSQUIRRELVM v)
 static SQInteger script_soundeffect__get(HSQUIRRELVM v)
 {
     Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4924,7 +4924,7 @@ static SQInteger script_soundeffect__get(HSQUIRRELVM v)
 static SQInteger script_soundeffect__set(HSQUIRRELVM v)
 {
     ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4957,7 +4957,7 @@ static SQInteger script_soundeffect__set(HSQUIRRELVM v)
 static SQInteger script_soundeffect__typeof(HSQUIRRELVM v)
 {
     ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4971,7 +4971,7 @@ static SQInteger script_soundeffect__typeof(HSQUIRRELVM v)
 static SQInteger script_soundeffect__tostring(HSQUIRRELVM v)
 {
     ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
         return sq_throwerror(v, _SC("invalid environment object"));
     }
     assert(This);
@@ -4986,7 +4986,7 @@ bool IsSoundEffect(HSQUIRRELVM v, SQInteger idx)
     if (sq_gettype(v, idx) == OT_INSTANCE) {
         SQUserPointer tt;
         sq_gettypetag(v, idx, &tt);
-        return tt == TT_SOUND;
+        return tt == TT_SOUNDEFFECT;
     }
     return false;
 }
@@ -4995,7 +4995,7 @@ bool IsSoundEffect(HSQUIRRELVM v, SQInteger idx)
 ISoundEffect* GetSoundEffect(HSQUIRRELVM v, SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUND))) {
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUNDEFFECT))) {
         return (ISoundEffect*)p;
     }
     return 0;
