@@ -11,10 +11,10 @@ public:
     static AudiereSoundEffect* Create(audiere::SoundEffect* soundeffect);
 
     // ISoundEffect implementation
-    void  play();
-    void  stop();
-    float getVolume() const;
-    void  setVolume(float volume);
+    void play();
+    void stop();
+    int  getVolume() const;
+    void setVolume(int volume);
 
 private:
     explicit AudiereSoundEffect(audiere::SoundEffect* soundeffect);

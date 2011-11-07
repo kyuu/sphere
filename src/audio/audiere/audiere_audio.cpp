@@ -60,13 +60,13 @@ namespace audio {
     }
 
     //-----------------------------------------------------------------
-    ISoundEffect* LoadSoundEffect(IStream* stream, ISoundEffect::Type type)
+    ISoundEffect* LoadSoundEffect(IStream* stream)
     {
         if (!stream || !stream->isReadable()) {
             return 0;
         }
         audiere::FilePtr file_adapter(new AudiereFileAdapter(stream));
-        audiere::SoundEffect* soundeffect = audiere::OpenSoundEffect(g_audio_device, file_adapter, (type == SoundEffect::SINGLE ? audiere::SINGLE : audiere::MULTIPLE));
+        audiere::SoundEffect* soundeffect = audiere::OpenSoundEffect(g_audio_device, file_adapter, audiere::MULTIPLE);
         if (soundeffect) {
             return AudiereSoundEffect::Create(soundeffect);
         }

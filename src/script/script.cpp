@@ -382,11 +382,11 @@ static SQInteger script_rect__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "Rect(" << This->ul.x;
+    oss << "<Rect instance (" << This->ul.x;
     oss <<    ", " << This->ul.y;
     oss <<    ", " << This->lr.x;
     oss <<    ", " << This->lr.y;
-    oss << ")";
+    oss << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -1006,9 +1006,9 @@ static SQInteger script_vec2__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "Vec2(" << This->x;
+    oss << "<Vec2 instance (" << This->x;
     oss <<    ", " << This->y;
-    oss << ")";
+    oss << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -2129,7 +2129,7 @@ static SQInteger script_blob__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "Blob(" << This->getSize() << ")";
+    oss << "<Blob instance (" << This->getSize() << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -2489,11 +2489,11 @@ static SQInteger script_rgba__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "RGBA(" << (int)This->red;
+    oss << "<RGBA instance (" << (int)This->red;
     oss <<    ", " << (int)This->green;
     oss <<    ", " << (int)This->blue;
     oss <<    ", " << (int)This->alpha;
-    oss << ")";
+    oss << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -3005,7 +3005,7 @@ static SQInteger script_canvas__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "Canvas(" << This->getWidth() << ", " << This->getHeight() << ")";
+    oss << "<Canvas instance (" << This->getWidth() << ", " << This->getHeight() << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -3475,13 +3475,13 @@ static SQInteger script_file__tostring(HSQUIRRELVM v)
     assert(This);
 
     std::ostringstream oss;
-    oss << "File(";
+    oss << "<File instance (";
     if (This->isOpen()) {
         oss << "\"" << This->getName() << "\"";
     } else {
-        oss << "<closed>";
+        oss << "N/A";
     }
-    oss << ")";
+    oss << ")>";
     sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
@@ -4367,7 +4367,9 @@ static SQInteger script_texture__tostring(HSQUIRRELVM v)
     }
     assert(This);
 
-    sq_pushstring(v, _SC("<Texture instance>"), -1);
+    std::ostringstream oss;
+    oss << "<Texture instance (" << This->getWidth() << ", " << This->getHeight() << ")>";
+    sq_pushstring(v, oss.str().c_str(), -1);
     return 1;
 }
 
@@ -4517,12 +4519,505 @@ bool BindTexture(HSQUIRRELVM v, ITexture* texture)
 
 /*********************** GLOBAL FUNCTIONS *************************/
 
+//-----------------------------------------------------------------
+// LoadSound(source [, streaming = false])
+static SQInteger script_LoadSound(HSQUIRRELVM v)
+{
+    if (sq_gettype(v, 2) == OT_STRING) {
+        // get filename
+        const SQChar* filename = 0;
+        sq_getstring(v, 2, &filename);
+
+        // get optional streaming
+        SQBool streaming = SQFalse;
+        if (sq_gettop(v) >= 3) {
+            if (sq_gettop(v, 3) != OT_BOOL) {
+                return sq_throwerror(v, _SC("invalid type of parameter <streaming>"));
+            }
+            sq_getbool(v, 3, &streaming);
+        }
+
+        // open file
+        FilePtr file = filesystem::OpenFile(filename);
+        if (!file) {
+            return sq_throwerror(v, _SC("failed to open file"));
+        }
+
+        // load sound
+        SoundPtr sound = audio::LoadSound(file.get(), (streaming == SQTrue ? true : false));
+        if (!sound) {
+            return sq_throwerror(v, _SC("failed to load sound"));
+        }
+
+        if (!BindSound(v, sound.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    } else if (IsStream(v, 2)) {
+        // get stream
+        IStream* stream = GetStream(v, 2);
+        assert(stream);
+
+        // get optional streaming
+        SQBool streaming = SQFalse;
+        if (sq_gettop(v) >= 3) {
+            if (sq_gettop(v, 3) != OT_BOOL) {
+                return sq_throwerror(v, _SC("invalid type of parameter <streaming>"));
+            }
+            sq_getbool(v, 3, &streaming);
+        }
+
+        // load sound
+        SoundPtr sound = audio::LoadSound(stream, (streaming == SQTrue ? true : false));
+        if (!sound) {
+            return sq_throwerror(v, _SC("failed to load sound"));
+        }
+
+        if (!BindSound(v, sound.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    } else {
+        return sq_throwerror(v, _SC("invalid type of parameter <source>"));
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// LoadSoundEffect(source)
+static SQInteger script_LoadSoundEffect(HSQUIRRELVM v)
+{
+    if (sq_gettype(v, 2) == OT_STRING) {
+        // get filename
+        const SQChar* filename = 0;
+        sq_getstring(v, 2, &filename);
+
+        // open file
+        FilePtr file = filesystem::OpenFile(filename);
+        if (!file) {
+            return sq_throwerror(v, _SC("failed to open file"));
+        }
+
+        // load sound effect
+        SoundEffectPtr sound_effect = audio::LoadSoundEffect(file.get());
+        if (!sound_effect) {
+            return sq_throwerror(v, _SC("failed to load sound effect"));
+        }
+
+        if (!BindSoundEffect(v, sound_effect.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    } else if (IsStream(v, 2)) {
+        // get stream
+        IStream* stream = GetStream(v, 2);
+        assert(stream);
+
+        // load sound effect
+        SoundEffectPtr sound_effect = audio::LoadSoundEffect(stream);
+        if (!sound_effect) {
+            return sq_throwerror(v, _SC("failed to load sound effect"));
+        }
+
+        if (!BindSoundEffect(v, sound_effect.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    } else {
+        return sq_throwerror(v, _SC("invalid type of parameter <source>"));
+    }
+    return 1;
+}
 
 /***************************** SOUND ******************************/
 
+//-----------------------------------------------------------------
+static SQInteger script_sound_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((ISound*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Sound.play()
+static SQInteger script_sound_play(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->play();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Sound.stop()
+static SQInteger script_sound_stop(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->stop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Sound.reset()
+static SQInteger script_sound_reset(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->reset();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Sound.isPlaying()
+static SQInteger script_sound_isPlaying(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->isPlaying());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Sound.isSeekable()
+static SQInteger script_sound_isSeekable(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->isSeekable());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Sound._get(index)
+static SQInteger script_sound__get(HSQUIRRELVM v)
+{
+    Canvas* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get string index
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    const SQChar* index = 0;
+    sq_getstring(v, 2, &index);
+
+    // scstrcmp is defined by squirrel
+    if (scstrcmp(index, "length") == 0) {
+        sq_pushinteger(v, This->getLength());
+    } else if (scstrcmp(index, "repeat") == 0) {
+        sq_pushbool(v, This->getRepeat());
+    } else if (scstrcmp(index, "volume") == 0) {
+        sq_pushinteger(v, This->getVolume());
+    } else if (scstrcmp(index, "position") == 0) {
+        sq_pushinteger(v, This->getPosition());
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Sound._set(index, value)
+static SQInteger script_sound__set(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get string index
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    const SQChar* index = 0;
+    sq_getstring(v, 2, &index);
+
+    // scstrcmp is defined by squirrel
+    if (scstrcmp(index, "repeat") == 0) {
+        SQBool value;
+        if (sq_gettype(v, 3) != OT_BOOL) {
+            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+        }
+        sq_getbool(v, 3, &value);
+        This->setRepeat((value == SQTrue ? true : false));
+    } else if (scstrcmp(index, "volume") == 0) {
+        SQInteger value;
+        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
+            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+        }
+        sq_getinteger(v, 3, &value);
+        This->setVolume(value);
+    } else if (scstrcmp(index, "position") == 0) {
+        SQInteger value;
+        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
+            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+        }
+        sq_getinteger(v, 3, &value);
+        This->setPosition(value);
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Sound._typeof()
+static SQInteger script_sound__typeof(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("Sound"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Sound._tostring()
+static SQInteger script_sound__tostring(HSQUIRRELVM v)
+{
+    ISound* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("<Sound instance>"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool IsSound(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_SOUND;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ISound* GetSound(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUND))) {
+        return (ISound*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindSound(HSQUIRRELVM v, ISound* sound)
+{
+    if (!sound) {
+        return false;
+    }
+    sq_pushobject(v, g_sound_class); // push sound class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop sound class
+        return false;
+    }
+    sq_remove(v, -2); // pop sound class
+    sq_setreleasehook(v, -1, script_sound_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)sound);
+    sound->grab(); // grab a new reference
+    return true;
+}
 
 /************************** SOUNDEFFECT ***************************/
 
+//-----------------------------------------------------------------
+static SQInteger script_soundeffect_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((ISoundEffect*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect.play()
+static SQInteger script_soundeffect_play(HSQUIRRELVM v)
+{
+    ISoundEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->play();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect.stop()
+static SQInteger script_soundeffect_stop(HSQUIRRELVM v)
+{
+    ISoundEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->stop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect._get(index)
+static SQInteger script_soundeffect__get(HSQUIRRELVM v)
+{
+    Canvas* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get string index
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    const SQChar* index = 0;
+    sq_getstring(v, 2, &index);
+
+    // scstrcmp is defined by squirrel
+    if (scstrcmp(index, "volume") == 0) {
+        sq_pushinteger(v, This->getVolume());
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect._set(index, value)
+static SQInteger script_soundeffect__set(HSQUIRRELVM v)
+{
+    ISoundEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get string index
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    const SQChar* index = 0;
+    sq_getstring(v, 2, &index);
+
+    // scstrcmp is defined by squirrel
+    if (scstrcmp(index, "volume") == 0) {
+        SQInteger value;
+        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
+            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+        }
+        sq_getinteger(v, 3, &value);
+        This->setVolume(value);
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect._typeof()
+static SQInteger script_soundeffect__typeof(HSQUIRRELVM v)
+{
+    ISoundEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("SoundEffect"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// SoundEffect._tostring()
+static SQInteger script_soundeffect__tostring(HSQUIRRELVM v)
+{
+    ISoundEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("<SoundEffect instance>"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool IsSoundEffect(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_SOUND;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ISoundEffect* GetSoundEffect(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUND))) {
+        return (ISoundEffect*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindSoundEffect(HSQUIRRELVM v, ISoundEffect* soundeffect)
+{
+    if (!soundeffect) {
+        return false;
+    }
+    sq_pushobject(v, g_soundeffect_class); // push soundeffect class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop soundeffect class
+        return false;
+    }
+    sq_remove(v, -2); // pop soundeffect class
+    sq_setreleasehook(v, -1, script_soundeffect_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)soundeffect);
+    soundeffect->grab(); // grab a new reference
+    return true;
+}
 
 /******************************************************************
  *                                                                *

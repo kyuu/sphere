@@ -11,18 +11,18 @@ public:
     static AudiereSound* Create(audiere::OutputStream* stream);
 
     // ISound implementation
-    void  play();
-    void  stop();
-    void  reset();
-    bool  isPlaying() const;
-    bool  isSeekable() const;
-    uint  getLength() const;
-    bool  getRepeat() const;
-    void  setRepeat(bool repeat);
-    float getVolume() const;
-    void  setVolume(float volume);
-    uint  getPosition() const;
-    void  setPosition(uint position);
+    void play();
+    void stop();
+    void reset();
+    bool isPlaying() const;
+    bool isSeekable() const;
+    int  getLength() const;
+    bool getRepeat() const;
+    void setRepeat(bool repeat);
+    int  getVolume() const;
+    void setVolume(int volume);
+    int  getPosition() const;
+    void setPosition(int position);
 
 private:
     explicit AudiereSound(audiere::OutputStream* stream);

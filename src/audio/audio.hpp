@@ -11,7 +11,7 @@ namespace audio {
     // TODO: add possibility to create sounds from memory
 
     ISound*       LoadSound(IStream* stream, bool streaming = false);
-    ISoundEffect* LoadSoundEffect(IStream* stream, ISoundEffect::Type type = ISoundEffect::SINGLE);
+    ISoundEffect* LoadSoundEffect(IStream* stream);
 
     namespace internal {
 

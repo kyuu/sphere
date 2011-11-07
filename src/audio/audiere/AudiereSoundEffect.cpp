@@ -37,15 +37,15 @@ AudiereSoundEffect::stop()
 }
 
 //-----------------------------------------------------------------
-float
+int
 AudiereSoundEffect::getVolume() const
 {
-    return _soundeffect->getVolume();
+    return (int)(_soundeffect->getVolume() * 100);
 }
 
 //-----------------------------------------------------------------
 void
-AudiereSoundEffect::setVolume(float volume)
+AudiereSoundEffect::setVolume(int volume)
 {
-    _soundeffect->setVolume(volume);
+    _soundeffect->setVolume((float)volume / 100);
 }

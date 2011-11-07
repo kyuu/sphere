@@ -58,10 +58,10 @@ AudiereSound::isSeekable() const
 }
 
 //-----------------------------------------------------------------
-uint
+int
 AudiereSound::getLength() const
 {
-    return (uint)_sound->getLength();
+    return _sound->getLength();
 }
 
 //-----------------------------------------------------------------
@@ -79,29 +79,29 @@ AudiereSound::setRepeat(bool repeat)
 }
 
 //-----------------------------------------------------------------
-float
+int
 AudiereSound::getVolume() const
 {
-    return _sound->getVolume();
+    return (int)(_sound->getVolume() * 100);
 }
 
 //-----------------------------------------------------------------
 void
-AudiereSound::setVolume(float volume)
+AudiereSound::setVolume(int volume)
 {
-    _sound->setVolume(volume);
+    _sound->setVolume((float)volume / 100);
 }
 
 //-----------------------------------------------------------------
-uint
+int
 AudiereSound::getPosition() const
 {
-    return (uint)_sound->getPosition();
+    return _sound->getPosition();
 }
 
 //-----------------------------------------------------------------
 void
-AudiereSound::setPosition(uint position)
+AudiereSound::setPosition(int position)
 {
     _sound->setPosition(position);
 }
