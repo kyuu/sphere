@@ -1,12 +1,12 @@
 #ifndef VIDEO_HPP
 #define VIDEO_HPP
 
-#include "../core/Canvas.hpp"
-#include "../core/Vec3.hpp"
+#include "../Log.hpp"
+#include "../graphics/Canvas.hpp"
+#include "../graphics/RGBA.hpp"
 #include "../core/Vec2.hpp"
 #include "../core/Rect.hpp"
 #include "../core/Dim2.hpp"
-#include "../core/RGBA.hpp"
 #include "ITexture.hpp"
 
 
@@ -21,11 +21,11 @@ namespace video {
     const char* GetWindowTitle();
     void SetWindowTitle(const char* title);
     void SetWindowIcon(Canvas* canvas);
-    void SwapBuffers();
+    void SwapFrameBuffers();
     bool GetClipRect(Recti& out);
     void SetClipRect(const Recti& clip);
     ITexture* CreateTexture(Canvas* canvas);
-    ITexture* CloneSection(const Recti& section);
+    ITexture* CloneFrameBuffer(Recti* section = 0);
 
     // 2D
     void DrawPoint(const Vec2i& pos, const RGBA& col);

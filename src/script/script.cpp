@@ -23,14 +23,15 @@
 // type tags
 #define TT_STREAM       ((SQUserPointer)100)
 #define TT_FILE         ((SQUserPointer)101)
-#define TT_BLOB         ((SQUserPointer)200)
-#define TT_CANVAS       ((SQUserPointer)201)
-#define TT_RGBA         ((SQUserPointer)202)
-#define TT_RECT         ((SQUserPointer)203)
-#define TT_VEC2         ((SQUserPointer)205)
-#define TT_TEXTURE      ((SQUserPointer)300)
-#define TT_SOUND        ((SQUserPointer)400)
-#define TT_SOUNDEFFECT  ((SQUserPointer)401)
+#define TT_BLOB         ((SQUserPointer)102)
+#define TT_CANVAS       ((SQUserPointer)103)
+#define TT_RGBA         ((SQUserPointer)104)
+#define TT_RECT         ((SQUserPointer)105)
+#define TT_VEC2         ((SQUserPointer)106)
+#define TT_TEXTURE      ((SQUserPointer)107)
+#define TT_SOUND        ((SQUserPointer)108)
+#define TT_SOUNDEFFECT  ((SQUserPointer)109)
+#define TT_FORCEEFFECT  ((SQUserPointer)110)
 
 // marshal magic numbers
 #define MARSHAL_MAGIC_NULL         ((u32)0x6a9edf86)
@@ -60,6 +61,7 @@ static HSQOBJECT g_vec2_class;
 static HSQOBJECT g_texture_class;
 static HSQOBJECT g_sound_class;
 static HSQOBJECT g_soundeffect_class;
+static HSQOBJECT g_forceeffect_class;
 
 /******************************************************************
  *                                                                *
@@ -277,11 +279,11 @@ static SQInteger script_rect__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "ul") == 0) {
+    if (scstrcmp(index, _SC("ul")) == 0) {
         if (!BindVec2(v, This->ul)) {
             return sq_throwerror(v, _SC("internal error"));
         }
-    } else if (scstrcmp(index, "lr") == 0) {
+    } else if (scstrcmp(index, _SC("lr")) == 0) {
         if (!BindVec2(v, This->lr)) {
             return sq_throwerror(v, _SC("internal error"));
         }
@@ -311,7 +313,7 @@ static SQInteger script_rect__set(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "ul") == 0) {
+    if (scstrcmp(index, _SC("ul")) == 0) {
         if (!IsVec2(v, 3)) {
             return sq_throwerror(v, _SC("invalid parameter <value>"));
         }
@@ -319,7 +321,7 @@ static SQInteger script_rect__set(HSQUIRRELVM v)
         assert(ul);
 
         This->ul = *ul;
-    } else if (scstrcmp(index, "lr") == 0) {
+    } else if (scstrcmp(index, _SC("lr")) == 0) {
         if (!IsVec2(v, 3)) {
             return sq_throwerror(v, _SC("invalid parameter <value>"));
         }
@@ -500,7 +502,6 @@ bool BindRect(HSQUIRRELVM v, const Recti& rect)
 
 //-----------------------------------------------------------------
 // Vec2(x, y)
-// Vec2(other)
 static SQInteger script_vec2_constructor(HSQUIRRELVM v)
 {
     Vec2i* This = 0;
@@ -509,35 +510,21 @@ static SQInteger script_vec2_constructor(HSQUIRRELVM v)
     }
     assert(This);
 
-    if (sq_gettype(v, 2) == OT_INSTANCE) { // assume the call is: Vec2(other)
-        // get other
-        if (!IsVec2(v, 2)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-        }
-        Vec2i* other = GetVec2(v, 2);
-        assert(other);
-
-        // initialize with a vector
-        new (This) Vec2i(*other);
-
-    } else { // assume the call is: Vec2(x, y)
-        // get x
-        SQInteger x;
-        if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <x>"));
-        }
-        sq_getinteger(v, 2, &x);
-
-        // get y
-        SQInteger y;
-        if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <y>"));
-        }
-        sq_getinteger(v, 3, &y);
-
-        // initialize with two integers
-        new (This) Vec2i(x, y);
+    // get x
+    SQInteger x;
+    if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
+        return sq_throwerror(v, _SC("invalid type of parameter <x>"));
     }
+    sq_getinteger(v, 2, &x);
+
+    // get y
+    SQInteger y;
+    if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
+        return sq_throwerror(v, _SC("invalid type of parameter <y>"));
+    }
+    sq_getinteger(v, 3, &y);
+
+    new (This) Vec2i(x, y);
     return 0;
 }
 
@@ -910,9 +897,9 @@ static SQInteger script_vec2__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "x") == 0) {
+    if (scstrcmp(index, _SC("x")) == 0) {
         sq_pushinteger(v, This->x);
-    } else if (scstrcmp(index, "y") == 0) {
+    } else if (scstrcmp(index, _SC("y")) == 0) {
         sq_pushinteger(v, This->y);
     } else {
         // index not found
@@ -947,10 +934,10 @@ static SQInteger script_vec2__set(HSQUIRRELVM v)
     sq_getinteger(v, 3, &value);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "x") == 0) {
-        This->x = (i32)value;
-    } else if (scstrcmp(index, "y") == 0) {
-        This->y = (i32)value;
+    if (scstrcmp(index, _SC("x")) == 0) {
+        This->x = value;
+    } else if (scstrcmp(index, _SC("y")) == 0) {
+        This->y = value;
     } else {
         // index not found
         sq_pushnull(v);
@@ -1368,7 +1355,8 @@ static SQInteger script_stream_eof(HSQUIRRELVM v)
 // endian encoding:
 // 'l': little endian
 // 'b': big endian
-static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
+// 'h': host endian
+static SQInteger script_stream_readNumber(HSQUIRRELVM v)
 {
     IStream* This = 0;
     if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
@@ -1396,50 +1384,44 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'c': {
             u8 n;
             if (!readu8(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i8)n);
-            return 1;
         }
         case 'b': {
             u8 n;
             if (!readu8(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, n);
-            return 1;
         }
         case 's': {
             u16 n;
             if (!readu16l(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i16)n);
-            return 1;
         }
         case 'w': {
             u16 n;
             if (!readu16l(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, n);
-            return 1;
         }
         case 'i': {
             u32 n;
             if (!readu32l(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i32)n);
-            return 1;
         }
         case 'f': {
             f32 n;
             if (!readf32l(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushfloat(v, n);
-            return 1;
         }
         default:
             return sq_throwerror(v, _SC("invalid parameter <type>"));
@@ -1450,7 +1432,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'c': {
             u8 n;
             if (!readu8(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i8)n);
             return 1;
@@ -1458,7 +1440,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'b': {
             u8 n;
             if (!readu8(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, n);
             return 1;
@@ -1466,7 +1448,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 's': {
             u16 n;
             if (!readu16b(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i16)n);
             return 1;
@@ -1474,7 +1456,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'w': {
             u16 n;
             if (!readu16b(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, n);
             return 1;
@@ -1482,7 +1464,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'i': {
             u32 n;
             if (!readu32b(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushinteger(v, (i32)n);
             return 1;
@@ -1490,7 +1472,7 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
         case 'f': {
             f32 n;
             if (!readf32b(This, n)) {
-                break;
+                goto throw_read_error;
             }
             sq_pushfloat(v, n);
             return 1;
@@ -1499,9 +1481,60 @@ static SQInteger script_stream_readNumberLE(HSQUIRRELVM v)
             return sq_throwerror(v, _SC("invalid parameter <type>"));
         }
         break;
+    case 'h':
+        switch (type) {
+        case 'c': {
+            u8 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushinteger(v, (i8)n);
+        }
+        case 'b': {
+            u8 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushinteger(v, n);
+        }
+        case 's': {
+            u16 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushinteger(v, (i16)n);
+        }
+        case 'w': {
+            u16 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushinteger(v, n);
+        }
+        case 'i': {
+            u32 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushinteger(v, (i32)n);
+        }
+        case 'f': {
+            f32 n;
+            if (This->read(&n, sizeof(n)) != sizeof(n)) {
+                goto throw_read_error;
+            }
+            sq_pushfloat(v, n);
+        }
+        default:
+            return sq_throwerror(v, _SC("invalid parameter <type>"));
+        }
+        break;
     default:
         return sq_throwerror(v, _SC("invalid parameter <endian>"));
     }
+    return 1;
+
+throw_read_error:
     return sq_throwerror(v, _SC("read error"));
 }
 
@@ -1680,6 +1713,69 @@ static SQInteger script_stream_writeNumber(HSQUIRRELVM v)
             }
         }
         break;
+    case 'h':
+        if (type == 'f') {
+            // get floating point number
+            SQFloat f;
+            if (sq_gettype(v, 3) != OT_FLOAT) {
+                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
+            }
+            sq_getfloat(v, 3, &f);
+
+            // write
+            f32 n = (f32)f;
+            if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                goto throw_write_error;
+            }
+        } else {
+            // get integer number
+            SQInteger i;
+            if (sq_gettype(v, 3) != OT_INTEGER) {
+                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
+            }
+            sq_getinteger(v, 3, &i);
+
+            // write
+            switch (type) {
+            case 'c': {
+                i8 n = (i8)i;
+                if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                    goto throw_write_error;
+                }
+            }
+            break;
+            case 'b': {
+                u8 n = (u8)i;
+                if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                    goto throw_write_error;
+                }
+            }
+            break;
+            case 's': {
+                i16 n = (i16)i;
+                if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                    goto throw_write_error;
+                }
+            }
+            break;
+            case 'w': {
+                u16 n = (u16)i;
+                if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                    goto throw_write_error;
+                }
+            }
+            break;
+            case 'i': {
+                i32 n = (i32)i;
+                if (This->write(&n, sizeof(n)) != sizeof(n))) {
+                    goto throw_write_error;
+                }
+            }
+            default:
+                return sq_throwerror(v, _SC("invalid parameter <type>"));
+            }
+        }
+        break;
     default:
         return sq_throwerror(v, _SC("invalid parameter <endian>"));
     }
@@ -1776,7 +1872,9 @@ static SQInteger script_blob_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Blob([size])
+// Blob()
+// Blob(size)
+// Blob(string)
 static SQInteger script_blob_constructor(HSQUIRRELVM v)
 {
     // ensure that this function is only ever called on uninitialized Blob instances
@@ -1786,23 +1884,36 @@ static SQInteger script_blob_constructor(HSQUIRRELVM v)
     }
     assert(!This);
 
-    // get optional size
-    SQInteger size = 0;
-    if (sq_gettop(v) >= 2) {
-        if (sq_gettype(v, 2) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <size>"));
-        }
-        sq_getinteger(v, 2, &size);
-    }
-    if (size < 0) {
-        return sq_throwerror(v, _SC("invalid parameter <size>"));
-    }
-
-    This = Blob::Create(size);
-    if (!This) {
+    BlobPtr blob = Blob::Create();
+    if (!blob) {
         return sq_throwerror(v, _SC("out of memory"));
     }
-    sq_setinstanceup(v, 1, (SQUserPointer)This);
+
+    if (sq_gettop(v) >= 2) {
+        if (sq_gettype(v, 2) == OT_INTEGER) {
+            SQInteger size;
+            sq_getinteger(v, 2, &size);
+            if (size < 0) {
+                return sq_throwerror(v, _SC("invalid parameter <size>"));
+            }
+            if (!blob->resize(size)) {
+                return sq_throwerror(v, _SC("out of memory"));
+            }
+        } else if (sq_gettype(v, 2) == OT_STRING) {
+            SQInteger str_size = sq_getsize(v, 2);
+            if (str_size > 0) {
+                const SQChar* str = 0;
+                sq_getstring(v, 2, &str);
+                if (!blob->assign(str, str_size)) { // assuming sizeof(SQChar) == 1
+                    return sq_throwerror(v, _SC("out of memory"));
+                }
+            }
+        } else {
+            return sq_throwerror(v, _SC("invalid type of initialization parameter"));
+        }
+    }
+
+    sq_setinstanceup(v, 1, (SQUserPointer)blob.release());
     sq_setreleasehook(v, 1, script_blob_destructor);
     return 0;
 }
@@ -2025,7 +2136,7 @@ static SQInteger script_blob__get(HSQUIRRELVM v)
         sq_getstring(v, 2, &index);
 
         // scstrcmp is defined by squirrel
-        if (scstrcmp(index, "size") == 0) {
+        if (scstrcmp(index, _SC("size")) == 0) {
             sq_pushinteger(v, This->getSize());
             return 1;
         } else {
@@ -2077,7 +2188,7 @@ static SQInteger script_blob__set(HSQUIRRELVM v)
         sq_getstring(v, 2, &index);
 
         // scstrcmp is defined by squirrel
-        if (scstrcmp(index, "size") == 0) {
+        if (scstrcmp(index, _SC("size")) == 0) {
             // get value (the new size)
             SQInteger value;
             if (sq_gettype(v, 3) != OT_INTEGER) {
@@ -2385,13 +2496,13 @@ static SQInteger script_rgba__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "red") == 0) {
+    if (scstrcmp(index, _SC("red")) == 0) {
         sq_pushinteger(v, This->red);
-    } else if (scstrcmp(index, "green") == 0) {
+    } else if (scstrcmp(index, _SC("green")) == 0) {
         sq_pushinteger(v, This->green);
-    } else if (scstrcmp(index, "blue") == 0) {
+    } else if (scstrcmp(index, _SC("blue")) == 0) {
         sq_pushinteger(v, This->blue);
-    } else if (scstrcmp(index, "alpha") == 0) {
+    } else if (scstrcmp(index, _SC("alpha")) == 0) {
         sq_pushinteger(v, This->alpha);
     } else {
         // index not found
@@ -2426,13 +2537,13 @@ static SQInteger script_rgba__set(HSQUIRRELVM v)
     sq_getinteger(v, 3, &value);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "red") == 0) {
+    if (scstrcmp(index, _SC("red")) == 0) {
         This->red = (u8)value;
-    } else if (scstrcmp(index, "green") == 0) {
+    } else if (scstrcmp(index, _SC("green")) == 0) {
         This->green = (u8)value;
-    } else if (scstrcmp(index, "blue") == 0) {
+    } else if (scstrcmp(index, _SC("blue")) == 0) {
         This->blue = (u8)value;
-    } else if (scstrcmp(index, "alpha") == 0) {
+    } else if (scstrcmp(index, _SC("alpha")) == 0) {
         This->alpha = (u8)value;
     } else {
         // index not found
@@ -2926,9 +3037,9 @@ static SQInteger script_canvas__get(HSQUIRRELVM v)
         sq_getstring(v, 2, &index);
 
         // scstrcmp is defined by squirrel
-        if (scstrcmp(index, "width") == 0) {
+        if (scstrcmp(index, _SC("width")) == 0) {
             sq_pushinteger(v, This->getWidth());
-        } else if (scstrcmp(index, "height") == 0) {
+        } else if (scstrcmp(index, _SC("height")) == 0) {
             sq_pushinteger(v, This->getHeight());
         } else {
             // index not found
@@ -3967,22 +4078,38 @@ static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
     return 0;
 }
 
+DrawRect(Vec2(10, 10), 100, 50, RGBA(200, 30, 50));
+
 //-----------------------------------------------------------------
-// DrawRect(rect, col [, col2, col3, col4])
+// DrawRect(pos, width, height, col [, col2, col3, col4])
 static SQInteger script_DrawRect(HSQUIRRELVM v)
 {
-    // get rect
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rect>"));
+    // get pos
+    if (!IsVec2(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
     }
-    Recti* rect = GetRect(v, 2);
-    assert(rect);
+    Vec2i* pos = GetVec2(v, 2);
+    assert(pos);
+
+    // get width
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
+    }
+    SQInteger width;
+    sq_getinteger(v, 3, &width);
+
+    // get height
+    if (sq_gettype(v, 4) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
+    }
+    SQInteger height;
+    sq_getinteger(v, 4, &height);
 
     // get col
-    if (!IsRGBA(v, 3)) {
+    if (!IsRGBA(v, 5)) {
         return sq_throwerror(v, _SC("invalid type of parameter <col>"));
     }
-    RGBA* col = GetRGBA(v, 3);
+    RGBA* col = GetRGBA(v, 5);
     assert(col);
 
     RGBA colors[4] = {
@@ -3993,27 +4120,27 @@ static SQInteger script_DrawRect(HSQUIRRELVM v)
     };
 
     // get optional col2
-    if (sq_gettop(v) >= 4) {
-        if (!IsRGBA(v, 4)) {
+    if (sq_gettop(v) >= 6) {
+        if (!IsRGBA(v, 6)) {
             return sq_throwerror(v, _SC("invalid type of parameter <col2>"));
         }
-        colors[1] = *(GetRGBA(v, 4));
+        colors[1] = *(GetRGBA(v, 6));
     }
 
     // get optional col3
-    if (sq_gettop(v) >= 5) {
-        if (!IsRGBA(v, 5)) {
+    if (sq_gettop(v) >= 7) {
+        if (!IsRGBA(v, 7)) {
             return sq_throwerror(v, _SC("invalid type of parameter <col3>"));
         }
-        colors[2] = *(GetRGBA(v, 5));
+        colors[2] = *(GetRGBA(v, 7));
     }
 
     // get optional col4
-    if (sq_gettop(v) >= 6) {
-        if (!IsRGBA(v, 6)) {
+    if (sq_gettop(v) >= 8) {
+        if (!IsRGBA(v, 8)) {
             return sq_throwerror(v, _SC("invalid type of parameter <col4>"));
         }
-        colors[3] = *(GetRGBA(v, 6));
+        colors[3] = *(GetRGBA(v, 8));
     }
 
     video::DrawRect(*rect, colors);
@@ -4297,9 +4424,9 @@ static SQInteger script_texture__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "width") == 0) {
+    if (scstrcmp(index, _SC("width")) == 0) {
         sq_pushinteger(v, This->getWidth());
-    } else if (scstrcmp(index, "height") == 0) {
+    } else if (scstrcmp(index, _SC("height")) == 0) {
         sq_pushinteger(v, This->getHeight());
     } else {
         // index not found
@@ -4723,13 +4850,13 @@ static SQInteger script_sound__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "length") == 0) {
+    if (scstrcmp(index, _SC("length")) == 0) {
         sq_pushinteger(v, This->getLength());
-    } else if (scstrcmp(index, "repeat") == 0) {
+    } else if (scstrcmp(index, _SC("repeat")) == 0) {
         sq_pushbool(v, This->getRepeat());
-    } else if (scstrcmp(index, "volume") == 0) {
+    } else if (scstrcmp(index, _SC("volume")) == 0) {
         sq_pushinteger(v, This->getVolume());
-    } else if (scstrcmp(index, "position") == 0) {
+    } else if (scstrcmp(index, _SC("position")) == 0) {
         sq_pushinteger(v, This->getPosition());
     } else {
         // index not found
@@ -4757,21 +4884,21 @@ static SQInteger script_sound__set(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "repeat") == 0) {
+    if (scstrcmp(index, _SC("repeat")) == 0) {
         SQBool value;
         if (sq_gettype(v, 3) != OT_BOOL) {
             return sq_throwerror(v, _SC("invalid type of parameter <value>"));
         }
         sq_getbool(v, 3, &value);
         This->setRepeat((value == SQTrue ? true : false));
-    } else if (scstrcmp(index, "volume") == 0) {
+    } else if (scstrcmp(index, _SC("volume")) == 0) {
         SQInteger value;
         if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
             return sq_throwerror(v, _SC("invalid type of parameter <value>"));
         }
         sq_getinteger(v, 3, &value);
         This->setVolume(value);
-    } else if (scstrcmp(index, "position") == 0) {
+    } else if (scstrcmp(index, _SC("position")) == 0) {
         SQInteger value;
         if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
             return sq_throwerror(v, _SC("invalid type of parameter <value>"));
@@ -4909,7 +5036,7 @@ static SQInteger script_soundeffect__get(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "volume") == 0) {
+    if (scstrcmp(index, _SC("volume")) == 0) {
         sq_pushinteger(v, This->getVolume());
     } else {
         // index not found
@@ -4937,7 +5064,7 @@ static SQInteger script_soundeffect__set(HSQUIRRELVM v)
     sq_getstring(v, 2, &index);
 
     // scstrcmp is defined by squirrel
-    if (scstrcmp(index, "volume") == 0) {
+    if (scstrcmp(index, _SC("volume")) == 0) {
         SQInteger value;
         if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
             return sq_throwerror(v, _SC("invalid type of parameter <value>"));
@@ -5027,6 +5154,1138 @@ bool BindSoundEffect(HSQUIRRELVM v, ISoundEffect* soundeffect)
 
 /*********************** GLOBAL FUNCTIONS *************************/
 
+//-----------------------------------------------------------------
+// UpdateInput()
+static SQInteger script_UpdateInput(HSQUIRRELVM v)
+{
+    input::UpdateInput();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// AreEventsPending()
+static SQInteger script_AreEventsPending(HSQUIRRELVM v)
+{
+    sq_pushbool(v, input::AreEventsPending());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetEvent()
+static SQInteger script_GetEvent(HSQUIRRELVM v)
+{
+    input::Event event;
+    if (input::GetEvent(event)) {
+        sq_newtable(v); // event
+
+        sq_pushstring(v, _SC("type"), -1);
+        sq_pushinteger(v, event.type);
+        sq_newslot(v, -3);
+
+        switch (event.type) {
+        case input::Event::KEY_DOWN:
+        case input::Event::KEY_UP:
+            sq_pushstring(v, _SC("key"), -1);
+            sq_pushinteger(v, event.key.key);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::MOUSE_BUTTON_DOWN:
+        case input::Event::MOUSE_BUTTON_UP:
+            sq_pushstring(v, _SC("mbutton"), -1);
+            sq_pushinteger(v, event.mbutton.button);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::MOUSE_MOTION:
+            sq_pushstring(v, _SC("dx"), -1);
+            sq_pushinteger(v, event.mmotion.dx);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("dy"), -1);
+            sq_pushinteger(v, event.mmotion.dy);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::MOUSE_WHEEL_MOTION:
+            sq_pushstring(v, _SC("dx"), -1);
+            sq_pushinteger(v, event.mwheel.dx);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("dy"), -1);
+            sq_pushinteger(v, event.mwheel.dy);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::JOY_BUTTON_DOWN:
+        case input::Event::JOY_BUTTON_UP:
+            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushinteger(v, event.jbutton.joy);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("button"), -1);
+            sq_pushinteger(v, event.jbutton.button);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::JOY_AXIS_MOTION:
+            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushinteger(v, event.jaxis.joy);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("axis"), -1);
+            sq_pushinteger(v, event.jaxis.axis);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("value"), -1);
+            sq_pushinteger(v, event.jaxis.value);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::JOY_HAT_MOTION:
+            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushinteger(v, event.jhat.joy);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("hat"), -1);
+            sq_pushinteger(v, event.jhat.hat);
+            sq_newslot(v, -3);
+
+            sq_pushstring(v, _SC("state"), -1);
+            sq_pushinteger(v, event.jhat.state);
+            sq_newslot(v, -3);
+            break;
+
+        case input::Event::APP_QUIT:
+            break;
+
+        default:
+            sq_poptop(v); // pop event table
+            return sq_throwerror(v, _SC("unrecognized event type"));
+        }
+    } else {
+        sq_pushnull(v);
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ClearEvents()
+static SQInteger script_ClearEvents(HSQUIRRELVM v)
+{
+    input::ClearEvents();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// IsKeyDown(key)
+static SQInteger script_IsKeyDown(HSQUIRRELVM v)
+{
+    // get key
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <key>"));
+    }
+    SQInteger key;
+    sq_getinteger(v, 2, &key);
+
+    sq_pushbool(v, input::IsKeyDown(key));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetMouseX()
+static SQInteger script_GetMouseX(HSQUIRRELVM v)
+{
+    sq_pushinteger(v, input::GetMouseX());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetMouseY()
+static SQInteger script_GetMouseY(HSQUIRRELVM v)
+{
+    sq_pushinteger(v, input::GetMouseY());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// IsMouseButtonDown(button)
+static SQInteger script_IsMouseButtonDown(HSQUIRRELVM v)
+{
+    // get button
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <button>"));
+    }
+    SQInteger button;
+    sq_getinteger(v, 2, &button);
+
+    sq_pushbool(v, input::IsMouseButtonDown(button));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetNumJoysticks()
+static SQInteger script_GetNumJoysticks(HSQUIRRELVM v)
+{
+    sq_pushinteger(v, input::GetNumJoysticks());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetJoystickName(joy)
+static SQInteger script_GetJoystickName(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    const char* joy_name = input::GetJoystickName(joy);
+    if (joy_name) {
+        sq_pushstring(v, joy_name, -1);
+    } else {
+        sq_pushnull(v);
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetNumJoystickButtons(joy)
+static SQInteger script_GetNumJoystickButtons(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    sq_pushinteger(v, input::GetNumJoystickButtons(joy));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetNumJoystickAxes(joy)
+static SQInteger script_GetNumJoystickAxes(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    sq_pushinteger(v, input::GetNumJoystickAxes(joy));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetNumJoystickHats(joy)
+static SQInteger script_GetNumJoystickHats(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    sq_pushinteger(v, input::GetNumJoystickHats(joy));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// IsJoystickButtonDown(joy, button)
+static SQInteger script_IsJoystickButtonDown(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get button
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <button>"));
+    }
+    SQInteger button;
+    sq_getinteger(v, 3, &button);
+
+    sq_pushbool(v, input::IsJoystickButtonDown(joy, button));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetJoystickAxis(joy, button)
+static SQInteger script_GetJoystickAxis(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get axis
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <axis>"));
+    }
+    SQInteger axis;
+    sq_getinteger(v, 3, &axis);
+
+    sq_pushinteger(v, input::GetJoystickAxis(joy, axis));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetJoystickHat(joy, hat)
+static SQInteger script_GetJoystickHat(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get hat
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <hat>"));
+    }
+    SQInteger hat;
+    sq_getinteger(v, 3, &hat);
+
+    sq_pushinteger(v, input::GetJoystickHat(joy, hat));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// HasJoystickForceFeedback(joy)
+static SQInteger script_HasJoystickForceFeedback(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    sq_pushbool(v, input::HasJoystickForceFeedback(joy));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// IsJoystickForceEffectSupported(joy, effect)
+static SQInteger script_IsJoystickForceEffectSupported(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    SQInteger effect;
+    sq_getinteger(v, 3, &effect);
+
+    sq_pushbool(v, input::IsJoystickForceEffectSupported(joy, effect));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// UploadJoystickForceEffect(joy, effect)
+static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (!IsForceEffect(v, 3)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    input::ForceEffect* effect = GetForceEffect(v, 3);
+    assert(effect);
+
+    sq_pushinteger(v, input::UploadJoystickForceEffect(joy, *effect));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// PlayJoystickForceEffect(joy, effect [, times])
+static SQInteger script_PlayJoystickForceEffect(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    SQInteger effect;
+    sq_getinteger(v, 3, &effect);
+
+    // get optional times
+    SQInteger times = 1;
+    if (sq_gettop(v) >= 4) {
+        if (sq_gettype(v, 4) != OT_INTEGER) {
+            return sq_throwerror(v, _SC("invalid type of parameter <times>"));
+        }
+        sq_getinteger(v, 4, &times);
+    }
+
+    sq_pushbool(v, input::PlayJoystickForceEffect(joy, effect, times));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// UpdateJoystickForceEffect(joy, effect, new_data)
+static SQInteger script_UpdateJoystickForceEffect(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    SQInteger effect;
+    sq_getinteger(v, 3, &effect);
+
+    // get new_data
+    if (!IsForceEffect(v, 4)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <new_data>"));
+    }
+    input::ForceEffect* new_data = GetForceEffect(v, 4);
+    assert(new_data);
+
+    sq_pushinteger(v, input::UpdateJoystickForceEffect(joy, effect, *new_data));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// StopJoystickForceEffect(joy, effect)
+static SQInteger script_StopJoystickForceEffect(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    SQInteger effect;
+    sq_getinteger(v, 3, &effect);
+
+    sq_pushbool(v, input::StopJoystickForceEffect(joy, effect));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// StopAllJoystickForceEffects(joy)
+static SQInteger script_StopAllJoystickForceEffects(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    sq_pushbool(v, input::StopAllJoystickForceEffects(joy));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// RemoveJoystickForceEffect(joy, effect)
+static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
+{
+    // get joy
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    }
+    SQInteger joy;
+    sq_getinteger(v, 2, &joy);
+
+    // get effect
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    SQInteger effect;
+    sq_getinteger(v, 3, &effect);
+
+    input::RemoveJoystickForceEffect(joy, effect);
+    return 0;
+}
+
+
+    union ForceEffect {
+
+        static const int INFINITY = 0x7FFFFFFF; // (2^31)-1 highest possible 32-bit signed integer number
+
+        enum Type {
+            CONSTANT = 0, // constant effect
+            RAMP,         // ramp effect
+            SINE,         // periodic effect
+            SQUARE,       // periodic effect
+            TRIANGLE,     // periodic effect
+            SAWTOOTHUP,   // periodic effect
+            SAWTOOTHDOWN, // periodic effect
+        };
+
+        struct Direction {
+            enum Type {
+                CARTESIAN = 0, // cartesian direction using the x, y, and z axes
+                POLAR,         // polar direction using an angle
+            };
+
+            int type;      // the type of the force direction encoding
+            int dir[3]; // encoded direction parameters
+        };
+
+        // the type of the force effect
+        int type;
+
+        // a constant force effect
+        struct {
+            int type;                  // ForceEffect::CONSTANT
+            Direction direction;       // direction of the force
+            u32 length;                // effect duration
+            u16 delay;                 // delay before playing the effect (again)
+            u16 attack_length;
+            u16 attack_level;
+            u16 fade_length;
+            u16 fade_level;
+            i16 level;                 // effect strength
+        } constant;
+
+        // a ramp force effect
+        struct {
+            int type;                  // ForceEffect::RAMP
+            Direction direction;       // direction of the force
+            u32 length;                // effect duration
+            u16 delay;                 // delay before playing the effect (again)
+            u16 attack_length;
+            u16 attack_level;
+            u16 fade_length;
+            u16 fade_level;
+            i16 start;
+            i16 end;
+        } ramp;
+
+        // a periodic force effect
+        struct {
+            int type;                  // ForceEffect::PERIODIC
+            Direction direction;       // direction of the force
+            u32 length;                // effect duration
+            u16 delay;                 // delay before playing the effect (again)
+            u16 attack_length;
+            u16 attack_level;
+            u16 fade_length;
+            u16 fade_level;
+            u16 period;
+            i16 magnitude;
+            i16 offset;
+            u16 phase;
+        } periodic;
+    };
+
+/************************** FORCEEFFECT ***************************/
+
+//-----------------------------------------------------------------
+// ForceEffect(type)
+static SQInteger script_forceeffect_constructor(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get type
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
+    }
+    SQInteger type;
+    sq_getinteger(v, 2, &type);
+
+    if (type != ForceEffect::CONSTANT   &&
+        type != ForceEffect::RAMP       &&
+        type != ForceEffect::SINE       &&
+        type != ForceEffect::SQUARE     &&
+        type != ForceEffect::TRIANGLE   &&
+        type != ForceEffect::SAWTOOTHUP &&
+        type != ForceEffect::SAWTOOTHDOWN)
+    {
+        return sq_throwerror(v, _SC("invalid parameter <type>"));
+    }
+
+    memset(This, 0, sizeof(ForceEffect));
+    This->type = type;
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._get(index)
+static SQInteger script_forceeffect__get(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get index
+    const SQChar* index = 0;
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    sq_getstring(v, 2, &index);
+
+    switch (effect->type) {
+    case ForceEffect::CONSTANT:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            sq_pushinteger(v, This->constant.direction.type);
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            sq_pushinteger(v, This->constant.direction.dir[0]);
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            sq_pushinteger(v, This->constant.direction.dir[1]);
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            sq_pushinteger(v, This->constant.direction.dir[2]);
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            sq_pushinteger(v, This->constant.length);
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            sq_pushinteger(v, This->constant.delay);
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            sq_pushinteger(v, This->constant.attack_length);
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            sq_pushinteger(v, This->constant.attack_level);
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            sq_pushinteger(v, This->constant.fade_length);
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            sq_pushinteger(v, This->constant.fade_level);
+        } else if (scstrcmp(index, _SC("level")) == 0) {
+            sq_pushinteger(v, This->constant.level);
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    case ForceEffect::RAMP:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            sq_pushinteger(v, This->ramp.direction.type);
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            sq_pushinteger(v, This->ramp.direction.dir[0]);
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            sq_pushinteger(v, This->ramp.direction.dir[1]);
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            sq_pushinteger(v, This->ramp.direction.dir[2]);
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            sq_pushinteger(v, This->ramp.length);
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            sq_pushinteger(v, This->ramp.delay);
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            sq_pushinteger(v, This->ramp.attack_length);
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            sq_pushinteger(v, This->ramp.attack_level);
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            sq_pushinteger(v, This->ramp.fade_length);
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            sq_pushinteger(v, This->ramp.fade_level);
+        } else if (scstrcmp(index, _SC("start")) == 0) {
+            sq_pushinteger(v, This->ramp.start);
+        } else if (scstrcmp(index, _SC("end")) == 0) {
+            sq_pushinteger(v, This->ramp.end);
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    case ForceEffect::SINE:
+    case ForceEffect::SQUARE:
+    case ForceEffect::TRIANGLE:
+    case ForceEffect::SAWTOOTHUP:
+    case ForceEffect::SAWTOOTHDOWN:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            sq_pushinteger(v, This->periodic.direction.type);
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            sq_pushinteger(v, This->periodic.direction.dir[0]);
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            sq_pushinteger(v, This->periodic.direction.dir[1]);
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            sq_pushinteger(v, This->periodic.direction.dir[2]);
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            sq_pushinteger(v, This->periodic.length);
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            sq_pushinteger(v, This->periodic.delay);
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            sq_pushinteger(v, This->periodic.attack_length);
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            sq_pushinteger(v, This->periodic.attack_level);
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            sq_pushinteger(v, This->periodic.fade_length);
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            sq_pushinteger(v, This->periodic.fade_level);
+        } else if (scstrcmp(index, _SC("period")) == 0) {
+            sq_pushinteger(v, This->periodic.period);
+        } else if (scstrcmp(index, _SC("magnitude")) == 0) {
+            sq_pushinteger(v, This->periodic.magnitude);
+        } else if (scstrcmp(index, _SC("offset")) == 0) {
+            sq_pushinteger(v, This->periodic.offset);
+        } else if (scstrcmp(index, _SC("phase")) == 0) {
+            sq_pushinteger(v, This->periodic.phase);
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    default:
+        return sq_throwerror(v, _SC("invalid force effect"));
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._set(index, value)
+static SQInteger script_forceeffect__set(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get index
+    const SQChar* index = 0;
+    if (sq_gettype(v, 2) != OT_STRING) {
+        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
+    }
+    sq_getstring(v, 2, &index);
+
+    // get value
+    if (sq_gettype(v, 3) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+    }
+    SQInteger value;
+    sq_getstring(v, 3, &value);
+
+    switch (effect->type) {
+    case ForceEffect::CONSTANT:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            This->constant.direction.type = value;
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            This->constant.direction.dir[0] = value;
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            This->constant.direction.dir[1] = value;
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            This->constant.direction.dir[2] = value;
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            This->constant.length = value;
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            This->constant.delay = value;
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            This->constant.attack_length = value;
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            This->constant.attack_level = value;
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            This->constant.fade_length = value;
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            This->constant.fade_level = value;
+        } else if (scstrcmp(index, _SC("level")) == 0) {
+            This->constant.level = value;
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    case ForceEffect::RAMP:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            This->ramp.direction.type = value;
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            This->ramp.direction.dir[0] = value;
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            This->ramp.direction.dir[1] = value;
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            This->ramp.direction.dir[2] = value;
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            This->ramp.length = value;
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            This->ramp.delay = value;
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            This->ramp.attack_length = value;
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            This->ramp.attack_level = value;
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            This->ramp.fade_length = value;
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            This->ramp.fade_level = value;
+        } else if (scstrcmp(index, _SC("start")) == 0) {
+            This->ramp.start = value;
+        } else if (scstrcmp(index, _SC("end")) == 0) {
+            This->ramp.end = value;
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    case ForceEffect::SINE:
+    case ForceEffect::SQUARE:
+    case ForceEffect::TRIANGLE:
+    case ForceEffect::SAWTOOTHUP:
+    case ForceEffect::SAWTOOTHDOWN:
+        // scstrcmp is defined by squirrel
+        if (scstrcmp(index, _SC("dir_type")) == 0) {
+            This->periodic.direction.type = value;
+        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
+            This->periodic.direction.dir[0] = value;
+        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
+            This->periodic.direction.dir[1] = value;
+        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
+            This->periodic.direction.dir[2] = value;
+        } else if (scstrcmp(index, _SC("length")) == 0) {
+            This->periodic.length = value;
+        } else if (scstrcmp(index, _SC("delay")) == 0) {
+            This->periodic.delay = value;
+        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
+            This->periodic.attack_length = value;
+        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
+            This->periodic.attack_level = value;
+        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
+            This->periodic.fade_length = value;
+        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
+            This->periodic.fade_level = value;
+        } else if (scstrcmp(index, _SC("period")) == 0) {
+            This->periodic.period = value;
+        } else if (scstrcmp(index, _SC("magnitude")) == 0) {
+            This->periodic.magnitude = value;
+        } else if (scstrcmp(index, _SC("offset")) == 0) {
+            This->periodic.offset = value;
+        } else if (scstrcmp(index, _SC("phase")) == 0) {
+            This->periodic.phase = value;
+        } else {
+            // index not found
+            sq_pushnull(v);
+            return sq_throwobject(v);
+        }
+        break;
+    default:
+        return sq_throwerror(v, _SC("invalid force effect"));
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._typeof()
+static SQInteger script_forceeffect__typeof(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("ForceEffect"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._cloned(effect)
+static SQInteger script_forceeffect__cloned(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get original effect
+    if (!IsForceEffect(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    ForceEffect* orig = GetForceEffect(v, 2);
+    assert(orig);
+
+    // clone effect
+    memcpy(This, orig, sizeof(ForceEffect));
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._tostring()
+static SQInteger script_forceeffect__tostring(HSQUIRRELVM v)
+{
+    ForceEffect* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    std::ostringstream oss;
+    oss << "<ForceEffect instance>";
+    sq_pushstring(v, oss.str().c_str(), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._dump(effect, stream)
+static SQInteger script_forceeffect__dump(HSQUIRRELVM v)
+{
+    // get effect
+    if (!IsForceEffect(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
+    }
+    ForceEffect* effect = GetForceEffect(v, 2);
+    assert(effect);
+
+    // get stream
+    if (!IsStream(v, 3)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+    }
+    IStream* stream = GetStream(v, 3);
+    assert(stream);
+    if (!stream->isWriteable()) {
+        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    }
+
+    // write class name
+    const char* class_name = "ForceEffect";
+    int class_name_size = strlen(class_name);
+    if (!writeu32l(stream, (u32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
+        goto throw_write_error;
+    }
+
+    // write type
+    if (!writeu32l(stream, (u32)effect->type)) {
+        goto throw_write_error;
+    }
+
+    // write data
+    switch (effect->type) {
+    case ForceEffect::CONSTANT:
+        if (!writeu32l(stream, (u32)effect->constant.direction.type)   ||
+            !writeu32l(stream, (u32)effect->constant.direction.dir[0]) ||
+            !writeu32l(stream, (u32)effect->constant.direction.dir[1]) ||
+            !writeu32l(stream, (u32)effect->constant.direction.dir[2]) ||
+            !writeu32l(stream, (u32)effect->constant.length)           ||
+            !writeu16l(stream, (u16)effect->constant.delay)            ||
+            !writeu16l(stream, (u16)effect->constant.attack_length)    ||
+            !writeu16l(stream, (u16)effect->constant.attack_level)     ||
+            !writeu16l(stream, (u16)effect->constant.fade_length)      ||
+            !writeu16l(stream, (u16)effect->constant.fade_level)       ||
+            !writeu16l(stream, (u16)effect->constant.level))
+        {
+            goto throw_write_error;
+        }
+        break;
+    case ForceEffect::RAMP:
+        if (!writeu32l(stream, (u32)effect->ramp.direction.type)   ||
+            !writeu32l(stream, (u32)effect->ramp.direction.dir[0]) ||
+            !writeu32l(stream, (u32)effect->ramp.direction.dir[1]) ||
+            !writeu32l(stream, (u32)effect->ramp.direction.dir[2]) ||
+            !writeu32l(stream, (u32)effect->ramp.length)           ||
+            !writeu16l(stream, (u16)effect->ramp.delay)            ||
+            !writeu16l(stream, (u16)effect->ramp.attack_length)    ||
+            !writeu16l(stream, (u16)effect->ramp.attack_level)     ||
+            !writeu16l(stream, (u16)effect->ramp.fade_length)      ||
+            !writeu16l(stream, (u16)effect->ramp.fade_level)       ||
+            !writeu16l(stream, (u16)effect->ramp.start)            ||
+            !writeu16l(stream, (u16)effect->ramp.end))
+        {
+            goto throw_write_error;
+        }
+        break;
+    case ForceEffect::SINE:
+    case ForceEffect::SQUARE:
+    case ForceEffect::TRIANGLE:
+    case ForceEffect::SAWTOOTHUP:
+    case ForceEffect::SAWTOOTHDOWN:
+        if (!writeu32l(stream, (u32)effect->periodic.direction.type)   ||
+            !writeu32l(stream, (u32)effect->periodic.direction.dir[0]) ||
+            !writeu32l(stream, (u32)effect->periodic.direction.dir[1]) ||
+            !writeu32l(stream, (u32)effect->periodic.direction.dir[2]) ||
+            !writeu32l(stream, (u32)effect->periodic.length)           ||
+            !writeu16l(stream, (u16)effect->periodic.delay)            ||
+            !writeu16l(stream, (u16)effect->periodic.attack_length)    ||
+            !writeu16l(stream, (u16)effect->periodic.attack_level)     ||
+            !writeu16l(stream, (u16)effect->periodic.fade_length)      ||
+            !writeu16l(stream, (u16)effect->periodic.fade_level)       ||
+            !writeu16l(stream, (u16)effect->periodic.period)           ||
+            !writeu16l(stream, (u16)effect->periodic.magnitude)        ||
+            !writeu16l(stream, (u16)effect->periodic.offset)           ||
+            !writeu16l(stream, (u16)effect->periodic.phase))
+        {
+            goto throw_write_error;
+        }
+        break;
+    default:
+        return sq_throwerror(v, _SC("invalid force effect"));
+    }
+    return 0;
+
+throw_write_error:
+    return sq_throwerror(v, _SC("write error"));
+}
+
+//-----------------------------------------------------------------
+// ForceEffect._load(stream)
+static SQInteger script_forceeffect__load(HSQUIRRELVM v)
+{
+    // get stream
+    if (!IsStream(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+    }
+    IStream* stream = GetStream(v, 2);
+    assert(stream);
+    if (!stream->isOpen() || !stream->isReadable()) {
+        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    }
+
+    ForceEffect effect;
+
+    // read type
+    if (!readu32l(stream, (u32)effect.type)) {
+        goto throw_read_error;
+    }
+
+    // read data
+    switch (effect.type) {
+    case ForceEffect::CONSTANT:
+        if (!readu32l(stream, (u32)effect.constant.direction.type)   ||
+            !readu32l(stream, (u32)effect.constant.direction.dir[0]) ||
+            !readu32l(stream, (u32)effect.constant.direction.dir[1]) ||
+            !readu32l(stream, (u32)effect.constant.direction.dir[2]) ||
+            !readu32l(stream, (u32)effect.constant.length)           ||
+            !readu16l(stream, (u16)effect.constant.delay)            ||
+            !readu16l(stream, (u16)effect.constant.attack_length)    ||
+            !readu16l(stream, (u16)effect.constant.attack_level)     ||
+            !readu16l(stream, (u16)effect.constant.fade_length)      ||
+            !readu16l(stream, (u16)effect.constant.fade_level)       ||
+            !readu16l(stream, (u16)effect.constant.level))
+        {
+            goto throw_read_error;
+        }
+        break;
+    case ForceEffect::RAMP:
+        if (!readu32l(stream, (u32)effect.ramp.direction.type)   ||
+            !readu32l(stream, (u32)effect.ramp.direction.dir[0]) ||
+            !readu32l(stream, (u32)effect.ramp.direction.dir[1]) ||
+            !readu32l(stream, (u32)effect.ramp.direction.dir[2]) ||
+            !readu32l(stream, (u32)effect.ramp.length)           ||
+            !readu16l(stream, (u16)effect.ramp.delay)            ||
+            !readu16l(stream, (u16)effect.ramp.attack_length)    ||
+            !readu16l(stream, (u16)effect.ramp.attack_level)     ||
+            !readu16l(stream, (u16)effect.ramp.fade_length)      ||
+            !readu16l(stream, (u16)effect.ramp.fade_level)       ||
+            !readu16l(stream, (u16)effect.ramp.start)            ||
+            !readu16l(stream, (u16)effect.ramp.end))
+        {
+            goto throw_read_error;
+        }
+        break;
+    case ForceEffect::SINE:
+    case ForceEffect::SQUARE:
+    case ForceEffect::TRIANGLE:
+    case ForceEffect::SAWTOOTHUP:
+    case ForceEffect::SAWTOOTHDOWN:
+        if (!readu32l(stream, (u32)effect.periodic.direction.type)   ||
+            !readu32l(stream, (u32)effect.periodic.direction.dir[0]) ||
+            !readu32l(stream, (u32)effect.periodic.direction.dir[1]) ||
+            !readu32l(stream, (u32)effect.periodic.direction.dir[2]) ||
+            !readu32l(stream, (u32)effect.periodic.length)           ||
+            !readu16l(stream, (u16)effect.periodic.delay)            ||
+            !readu16l(stream, (u16)effect.periodic.attack_length)    ||
+            !readu16l(stream, (u16)effect.periodic.attack_level)     ||
+            !readu16l(stream, (u16)effect.periodic.fade_length)      ||
+            !readu16l(stream, (u16)effect.periodic.fade_level)       ||
+            !readu16l(stream, (u16)effect.periodic.period)           ||
+            !readu16l(stream, (u16)effect.periodic.magnitude)        ||
+            !readu16l(stream, (u16)effect.periodic.offset)           ||
+            !readu16l(stream, (u16)effect.periodic.phase))
+        {
+            goto throw_read_error;
+        }
+        break;
+    default:
+        return sq_throwerror(v, _SC("invalid force effect"));
+    }
+
+    if (!BindForceEffect(v, effect) {
+        return sq_throwerror(v, _SC("internal error"));
+    }
+    return 1;
+
+throw_read_error:
+    return sq_throwerror(v, _SC("read error"));
+}
+
+//-----------------------------------------------------------------
+bool IsForceEffect(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_FORCEEFFECT;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ForceEffect* GetForceEffect(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_FORCEEFFECT))) {
+        return (ForceEffect*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindForceEffect(HSQUIRRELVM v, const ForceEffect& effect)
+{
+    sq_pushobject(v, g_forceeffect_class); // push forceeffect class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop forceeffect class
+        return false;
+    }
+    sq_remove(v, -2); // pop forceeffect class
+    SQUserPointer p = 0;
+    sq_getinstanceup(v, -1, &p, 0);
+    assert(p);
+    memcpy(p, &effect, sizeof(ForceEffect));
+    return true;
+}
 
 /******************************************************************
  *                                                                *
@@ -5040,7 +6299,7 @@ bool BindSoundEffect(HSQUIRRELVM v, ISoundEffect* soundeffect)
 // GetTime()
 static SQInteger script_GetTime(HSQUIRRELVM v)
 {
-    sq_pushinteger(GetTime());
+    sq_pushinteger(system::GetTime());
     return 1;
 }
 
@@ -5048,7 +6307,15 @@ static SQInteger script_GetTime(HSQUIRRELVM v)
 // GetTicks()
 static SQInteger script_GetTicks(HSQUIRRELVM v)
 {
-    sq_pushinteger(GetTicks());
+    sq_pushinteger(system::GetTicks());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// GetRandom()
+static SQInteger script_GetRandom(HSQUIRRELVM v)
+{
+    sq_pushinteger(system::GetRandom());
     return 1;
 }
 
@@ -5063,7 +6330,7 @@ static SQInteger script_Sleep(HSQUIRRELVM v)
     }
     sq_getinteger(v, 2, &millis);
 
-    Sleep(millis);
+    system::Sleep(millis);
     return 0;
 }
 

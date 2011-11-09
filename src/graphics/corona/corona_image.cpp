@@ -1,5 +1,5 @@
 #include <corona.h>
-#include "graphics.hpp"
+#include "../image.hpp"
 
 
 //-----------------------------------------------------------------

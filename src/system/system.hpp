@@ -1,14 +1,22 @@
 #ifndef SYSTEM_HPP
 #define SYSTEM_HPP
 
-#include "../common/types.hpp"
+#include "../Log.hpp"
 
 
 namespace system {
 
-    u32  GetTime();
-    u32  GetTicks();
-    void Sleep();
+    int  GetTime();
+    int  GetTicks();
+    int  GetRandom();
+    void Sleep(int millis);
+
+    namespace internal {
+
+        bool InitSystem(const Log& log);
+        void DeinitSystem(const Log& log);
+
+    } // namespace internal
 
 } // namespace system
 

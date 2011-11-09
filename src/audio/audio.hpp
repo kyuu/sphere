@@ -2,15 +2,14 @@
 #define AUDIO_HPP
 
 #include <string>
+#include "../Log.hpp"
 #include "ISound.hpp"
 #include "ISoundEffect.hpp"
 
 
 namespace audio {
 
-    // TODO: add possibility to create sounds from memory
-
-    ISound*       LoadSound(IStream* stream, bool streaming = false);
+    ISound* LoadSound(IStream* stream, bool streaming = false);
     ISoundEffect* LoadSoundEffect(IStream* stream);
 
     namespace internal {

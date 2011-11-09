@@ -202,7 +202,7 @@ namespace video {
     }
 
     //-----------------------------------------------------------------
-    void SwapBuffers()
+    void SwapFrameBuffers()
     {
         if (g_window) {
             SDL_GL_SwapWindow(g_window);
@@ -272,16 +272,24 @@ namespace video {
     }
 
     //-----------------------------------------------------------------
-    ITexture* CloneSection(const Recti& section)
+    ITexture* CloneFrameBuffer(Recti* section)
     {
-        if (!g_window || !Recti(0, 0, _windowWidth - 1, _windowHeight - 1).contains(section)) {
+        if (!g_window) {
             return 0;
         }
 
-        int x = section.getX();
-        int y = section.getY();
-        int width  = section.getWidth();
-        int height = section.getHeight();
+        Recti rect(0, 0, g_window_width - 1, g_window_height - 1);
+        if (section) {
+            if (!rect.contains(*section)) {
+                return 0;
+            }
+            rect = *section;
+        }
+
+        int x = rect.getX();
+        int y = rect.getY();
+        int width  = rect.getWidth();
+        int height = rect.getHeight();
 
         double log2_width  = log10((double)width)  / log10(2.0);
         double log2_height = log10((double)height) / log10(2.0);

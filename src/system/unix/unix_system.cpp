@@ -1,32 +1,69 @@
 #include "system.hpp"
 
 #include <ctime>
+#include <cstdlib>
 #include <unistd.h>
 #include <sys/time.h>
 
 
+//-----------------------------------------------------------------
+// globals
+static unsigned int g_ticks_at_start = 0;
+
 namespace system {
 
     //-----------------------------------------------------------------
-    u32 GetTime()
+    int GetTime()
     {
-        return (u32)time(0);
+        return (int)time(0);
     }
 
     //-----------------------------------------------------------------
-    u32 GetTicks()
+    int GetTicks()
     {
         timeval tv;
         if (gettimeofday(&tv, 0) != 0) {
             return 0;
         }
-        return (u32)((tv.tv_sec * 1000) + (tv.tv_usec / 1000));
+        return (int)(((tv.tv_sec * 1000) + (tv.tv_usec / 1000)) - g_ticks_at_start);
     }
 
     //-----------------------------------------------------------------
-    void Sleep(u32 millis)
+    int GetRandom()
+    {
+        return rand();
+    }
+
+    //-----------------------------------------------------------------
+    void Sleep(int millis)
     {
         usleep(millis * 1000);
     }
+
+    namespace internal {
+
+        //-----------------------------------------------------------------
+        bool InitSystem(const Log& log)
+        {
+            // initialize tick count
+            timeval tv;
+            if (gettimeofday(&tv, 0) != 0) {
+                return 0;
+            }
+            g_ticks_at_start = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+
+            // seed the random number generator
+            srand(g_ticks_at_start);
+
+            return true;
+        }
+
+        //-----------------------------------------------------------------
+        void DeinitSystem(const Log& log)
+        {
+            // NO-OP
+        }
+
+    } // namespace internal
 
 } // namespace system

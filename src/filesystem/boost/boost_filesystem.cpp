@@ -101,12 +101,12 @@ namespace filesystem {
     }
 
     //-----------------------------------------------------------------
-    i32 GetLastWriteTime(const std::string& p)
+    int GetLastWriteTime(const std::string& p)
     {
         std::string _p;
         if (make_path(p, _p)) {
             try {
-                return (i32)fs::last_write_time(_p);
+                return (int)fs::last_write_time(_p);
             } catch (...) { }
         }
         return -1;

@@ -1,5 +1,5 @@
-#ifndef GRAPHICS_HPP
-#define GRAPHICS_HPP
+#ifndef IMAGE_HPP
+#define IMAGE_HPP
 
 #include "Canvas.hpp"
 #include "../io/IStream.hpp"
