@@ -13,6 +13,7 @@ public:
     static Blob* Create(const void* buf, int size);
 
     int   getSize() const;
+    int   getCapacity() const;
     u8*   getBuffer();
     u8&   at(int pos);
     void  clear();
@@ -21,7 +22,9 @@ public:
     bool  append(const void* buf, int size);
     Blob* concat(const void* buf, int size);
     bool  resize(int size);
+    void  bloat();
     bool  reserve(int size);
+    bool  doubleCapacity();
 
     // IStream implementation
     bool isOpen() const;
@@ -54,6 +57,13 @@ inline int
 Blob::getSize() const
 {
     return _size;
+}
+
+//-----------------------------------------------------------------
+inline int
+Blob::getCapacity() const
+{
+    return _reserved;
 }
 
 //-----------------------------------------------------------------

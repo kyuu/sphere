@@ -32,6 +32,9 @@
 #define TT_SOUND        ((SQUserPointer)108)
 #define TT_SOUNDEFFECT  ((SQUserPointer)109)
 #define TT_FORCEEFFECT  ((SQUserPointer)110)
+#define TT_CIPHER       ((SQUserPointer)111)
+#define TT_HASH         ((SQUserPointer)112)
+#define TT_CRC32        ((SQUserPointer)113)
 
 // marshal magic numbers
 #define MARSHAL_MAGIC_NULL         ((u32)0x6a9edf86)
@@ -62,6 +65,8 @@ static HSQOBJECT g_texture_class;
 static HSQOBJECT g_sound_class;
 static HSQOBJECT g_soundeffect_class;
 static HSQOBJECT g_forceeffect_class;
+static HSQOBJECT g_cipher_class;
+static HSQOBJECT g_hash_class;
 
 /******************************************************************
  *                                                                *
@@ -1933,6 +1938,20 @@ static SQInteger script_blob_getSize(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Blob.getCapacity()
+static SQInteger script_blob_getCapacity(HSQUIRRELVM v)
+{
+    Blob* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushinteger(v, This->getCapacity());
+    return 1;
+}
+
+//-----------------------------------------------------------------
 // Blob.clear()
 static SQInteger script_blob_clear(HSQUIRRELVM v)
 {
@@ -1994,6 +2013,20 @@ static SQInteger script_blob_resize(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Blob.bloat()
+static SQInteger script_blob_bloat(HSQUIRRELVM v)
+{
+    Blob* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    This->bloat();
+    return 0;
+}
+
+//-----------------------------------------------------------------
 // Blob.reserve(size)
 static SQInteger script_blob_reserve(HSQUIRRELVM v)
 {
@@ -2003,8 +2036,25 @@ static SQInteger script_blob_reserve(HSQUIRRELVM v)
     }
     assert(This);
 
-    ARG_INT(size);
-    This->reserve(size);
+    if (!This->reserve(size)) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Blob.doubleCapacity()
+static SQInteger script_blob_doubleCapacity(HSQUIRRELVM v)
+{
+    Blob* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    if (!This->doubleCapacity()) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
     return 0;
 }
 
@@ -2138,7 +2188,8 @@ static SQInteger script_blob__get(HSQUIRRELVM v)
         // scstrcmp is defined by squirrel
         if (scstrcmp(index, _SC("size")) == 0) {
             sq_pushinteger(v, This->getSize());
-            return 1;
+        } else if (scstrcmp(index, _SC("capacity")) == 0) {
+            sq_pushinteger(v, This->getCapacity());
         } else {
             // index not found
             sq_pushnull(v);
@@ -2149,6 +2200,7 @@ static SQInteger script_blob__get(HSQUIRRELVM v)
     default:
         return sq_throwerror(v, _SC("invalid type of parameter <index>"));
     }
+    return 1;
 }
 
 //-----------------------------------------------------------------
@@ -6289,7 +6341,7 @@ bool BindForceEffect(HSQUIRRELVM v, const ForceEffect& effect)
 
 /******************************************************************
  *                                                                *
- *                              SYSTEM                            *
+ *                             SYSTEM                             *
  *                                                                *
  ******************************************************************/
 
@@ -6332,6 +6384,581 @@ static SQInteger script_Sleep(HSQUIRRELVM v)
 
     system::Sleep(millis);
     return 0;
+}
+
+/******************************************************************
+ *                                                                *
+ *                             CRYPT                              *
+ *                                                                *
+ ******************************************************************/
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+// Base64Encode(in [, out])
+static SQInteger script_Base64Encode(HSQUIRRELVM v)
+{
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    if (sq_gettop(v) >= 3) {
+        if (!IsBlob(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 3);
+        assert(out);
+
+        if (!crypt::Base64Encode(in->getBuffer(), in->getSize(), out)) {
+            return sq_throwerror(v, _SC("base64 encoding failed"));
+        }
+
+        sq_push(v, 3);
+
+    } else {
+        BlobPtr out = Blob::Create();
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!crypt::Base64Encode(in->getBuffer(), in->getSize(), out.get())) {
+            return sq_throwerror(v, _SC("base64 encoding failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Base64Decode(in [, out])
+static SQInteger script_Base64Decode(HSQUIRRELVM v)
+{
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    if (sq_gettop(v) >= 3) {
+        if (!IsBlob(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 3);
+        assert(out);
+
+        if (!crypt::Base64Decode(in->getBuffer(), in->getSize(), out)) {
+            return sq_throwerror(v, _SC("base64 encoding failed"));
+        }
+
+        sq_push(v, 3);
+
+    } else {
+        BlobPtr out = Blob::Create();
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!crypt::Base64Decode(in->getBuffer(), in->getSize(), out.get())) {
+            return sq_throwerror(v, _SC("base64 decoding failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ComputeCRC32(in [, in_crc32 = 0])
+static SQInteger script_ComputeCRC32(HSQUIRRELVM v)
+{
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    SQInteger in_crc32 = 0;
+    if (sq_gettop(v) >= 3) {
+        if (sq_gettype(v, 3) != OT_INTEGER) {
+            return sq_throwerror(v, _SC("invalid type of parameter <in_crc32>"));
+        }
+        sq_getinteger(v, 3, &in_crc32);
+    }
+
+    sq_pushinteger(v, crypt::ComputeCRC32(in->getBuffer(), in->getSize(), in_crc32));
+    return 1;
+}
+
+/**************************** CIPHER ******************************/
+
+//-----------------------------------------------------------------
+static SQInteger script_cipher_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((ICipher*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Cipher(type)
+static SQInteger script_cipher_constructor(HSQUIRRELVM v)
+{
+    // ensure that this function is only ever called on uninitialized Cipher instances
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER)) || This != 0) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(!This);
+
+    // get type
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
+    }
+    SQInteger type;
+    sq_getinteger(v, 2);
+
+    This = crypt::CreateCipher(type);
+    if (!This) {
+        return sq_throwerror(v, _SC("failed to create cipher"));
+    }
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_cipher_destructor);
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Cipher.init(key)
+static SQInteger script_cipher_init(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get key
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <key>"));
+    }
+    Blob* key = GetBlob(v, 2);
+    assert(key);
+    if (key->getSize() != 32) {
+        return sq_throwerror(v, _SC("invalid parameter <key>"));
+    }
+
+    sq_pushbool(v, This->init(key->getBuffer()));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher.getType()
+static SQInteger script_cipher_getType(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushinteger(v, This->getType());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher.getIV()
+static SQInteger script_cipher_getIV(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    BlobPtr iv = Blob::Create();
+    if (!iv || !This->getIV(iv)) {
+        return sq_throwerror(v, _SC("failed to get IV"));
+    }
+    if (!BindBlob(v, iv.get())) {
+        return sq_throwerror(v, _SC("internal error"));
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher.encrypt(in [, out])
+static SQInteger script_cipher_encrypt(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    if (sq_gettop(v) >= 3) {
+        if (!IsBlob(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 3);
+        assert(out);
+        if (out->getSize() != in->getSize() && !out->resize(in->getSize())) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->encrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
+            return sq_throwerror(v, _SC("encryption failed"));
+        }
+
+        sq_push(v, 3);
+
+    } else {
+        BlobPtr out = Blob::Create(in->getSize());
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->encrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
+            return sq_throwerror(v, _SC("encryption failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher.decrypt(in [, out])
+static SQInteger script_cipher_decrypt(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    if (sq_gettop(v) >= 3) {
+        if (!IsBlob(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 3);
+        assert(out);
+        if (out->getSize() != in->getSize() && !out->resize(in->getSize())) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->decrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
+            return sq_throwerror(v, _SC("decryption failed"));
+        }
+
+        sq_push(v, 3);
+
+    } else {
+        BlobPtr out = Blob::Create(in->getSize());
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->decrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
+            return sq_throwerror(v, _SC("decryption failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher._typeof()
+static SQInteger script_cipher__typeof(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("Cipher"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Cipher._tostring()
+static SQInteger script_cipher__tostring(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    std::ostringstream oss;
+    oss << "<Cipher instance>";
+    sq_pushstring(v, oss.str().c_str(), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool IsCipher(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_CIPHER;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ICipher* GetCipher(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_CIPHER))) {
+        return (ICipher*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindCipher(HSQUIRRELVM v, ICipher* cipher)
+{
+    if (!cipher) {
+        return false;
+    }
+    sq_pushobject(v, g_cipher_class); // push cipher class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop cipher class
+        return false;
+    }
+    sq_remove(v, -2); // pop cipher class
+    sq_setreleasehook(v, -1, script_cipher_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)cipher);
+    cipher->grab(); // grab a new reference
+    return true;
+}
+
+/***************************** HASH *******************************/
+
+//-----------------------------------------------------------------
+static SQInteger script_hash_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((IHash*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Hash(type)
+static SQInteger script_hash_constructor(HSQUIRRELVM v)
+{
+    // ensure that this function is only ever called on uninitialized Hash instances
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH)) || This != 0) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(!This);
+
+    // get type
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
+    }
+    SQInteger type;
+    sq_getinteger(v, 2);
+
+    This = crypt::CreateHash(type);
+    if (!This) {
+        return sq_throwerror(v, _SC("failed to create hash"));
+    }
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_hash_destructor);
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// Hash.init()
+static SQInteger script_hash_init(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->init());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Hash.getType()
+static SQInteger script_hash_getType(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushinteger(v, This->getType());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Hash.process(in)
+static SQInteger script_hash_encrypt(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    sq_pushbool(v, This->process(in->getBuffer(), in->getSize()));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Hash.finish()
+static SQInteger script_hash_encrypt(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    BlobPtr result = Blob::Create();
+    if (!result) {
+        return sq_throwerror(v, _SC("out of memory"));
+    }
+
+    if (!This->finish(result.get())) {
+        return sq_throwerror(v, _SC("finish failed"));
+    }
+
+    if (!BindBlob(v, result.get())) {
+        return sq_throwerror(v, _SC("internal error"));
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Hash._typeof()
+static SQInteger script_hash__typeof(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("Hash"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// Hash._tostring()
+static SQInteger script_hash__tostring(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    std::ostringstream oss;
+    oss << "<Hash instance>";
+    sq_pushstring(v, oss.str().c_str(), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool IsHash(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_HASH;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+IHash* GetHash(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_HASH))) {
+        return (IHash*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindHash(HSQUIRRELVM v, IHash* hash)
+{
+    if (!hash) {
+        return false;
+    }
+    sq_pushobject(v, g_hash_class); // push hash class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop hash class
+        return false;
+    }
+    sq_remove(v, -2); // pop hash class
+    sq_setreleasehook(v, -1, script_hash_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)hash);
+    hash->grab(); // grab a new reference
+    return true;
 }
 
 /******************************************************************
