@@ -12,6 +12,7 @@ public:
 
     // IHash implementation
     bool init();
+    bool isInitialized() const;
     int  getType() const;
     bool process(const u8* buf, int len);
     bool finish(Blob* hash);

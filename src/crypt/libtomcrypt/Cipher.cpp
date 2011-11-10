@@ -70,6 +70,13 @@ Cipher::init(const u8* key)
 }
 
 //-----------------------------------------------------------------
+bool
+Cipher::isInitialized() const
+{
+    return _initialized;
+}
+
+//-----------------------------------------------------------------
 int
 Cipher::getType() const
 {

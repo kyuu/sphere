@@ -15,6 +15,7 @@ public:
     }
 
     virtual bool init(const u8* key) = 0;
+    virtual bool isInitialized() const = 0;
     virtual int  getType() const = 0;
     virtual bool getIV(Blob* iv) const = 0;
     virtual bool encrypt(const u8* pt, u8* ct, int len) = 0;

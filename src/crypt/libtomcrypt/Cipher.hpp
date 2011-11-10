@@ -12,6 +12,7 @@ public:
 
     // ICipher implementation
     bool init(const u8* key);
+    bool isInitialized() const;
     int  getType() const;
     bool getIV(Blob* iv) const;
     bool encrypt(const u8* pt, u8* ct, int len);

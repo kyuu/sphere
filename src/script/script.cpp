@@ -34,7 +34,7 @@
 #define TT_FORCEEFFECT  ((SQUserPointer)110)
 #define TT_CIPHER       ((SQUserPointer)111)
 #define TT_HASH         ((SQUserPointer)112)
-#define TT_CRC32        ((SQUserPointer)113)
+#define TT_ZSTREAM      ((SQUserPointer)113)
 
 // marshal magic numbers
 #define MARSHAL_MAGIC_NULL         ((u32)0x6a9edf86)
@@ -67,6 +67,7 @@ static HSQOBJECT g_soundeffect_class;
 static HSQOBJECT g_forceeffect_class;
 static HSQOBJECT g_cipher_class;
 static HSQOBJECT g_hash_class;
+static HSQOBJECT g_zstream_class;
 
 /******************************************************************
  *                                                                *
@@ -6570,6 +6571,20 @@ static SQInteger script_cipher_init(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Cipher.isInitialized()
+static SQInteger script_cipher_isInitialized(HSQUIRRELVM v)
+{
+    ICipher* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->isInitialized());
+    return 1;
+}
+
+//-----------------------------------------------------------------
 // Cipher.getType()
 static SQInteger script_cipher_getType(HSQUIRRELVM v)
 {
@@ -6830,6 +6845,20 @@ static SQInteger script_hash_init(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Hash.isInitialized()
+static SQInteger script_hash_isInitialized(HSQUIRRELVM v)
+{
+    IHash* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->isInitialized());
+    return 1;
+}
+
+//-----------------------------------------------------------------
 // Hash.getType()
 static SQInteger script_hash_getType(HSQUIRRELVM v)
 {
@@ -6958,6 +6987,285 @@ bool BindHash(HSQUIRRELVM v, IHash* hash)
     sq_setreleasehook(v, -1, script_hash_destructor);
     sq_setinstanceup(v, -1, (SQUserPointer)hash);
     hash->grab(); // grab a new reference
+    return true;
+}
+
+/******************************************************************
+ *                                                                *
+ *                          COMPRESSION                           *
+ *                                                                *
+ ******************************************************************/
+
+/**************************** ZSTREAM *****************************/
+
+//-----------------------------------------------------------------
+static SQInteger script_zstream_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((ZStream*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// ZStream()
+static SQInteger script_zstream_constructor(HSQUIRRELVM v)
+{
+    // ensure that this function is only ever called on uninitialized ZStream instances
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM)) || This != 0) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(!This);
+
+    // get type
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
+    }
+    SQInteger type;
+    sq_getinteger(v, 2);
+
+    This = ZStream::Create();
+    if (!This) {
+        return sq_throwerror(v, _SC("failed to create zstream"));
+    }
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_zstream_destructor);
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// ZStream.init()
+static SQInteger script_zstream_init(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->init());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.isInitialized()
+static SQInteger script_zstream_isInitialized(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushbool(v, This->isInitialized());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.getMode()
+static SQInteger script_zstream_getMode(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushinteger(v, This->getMode());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.getBufferSize()
+static SQInteger script_zstream_getBufferSize(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushinteger(v, This->getBufferSize());
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.setBufferSize(size)
+static SQInteger script_zstream_setBufferSize(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get size
+    if (sq_gettype(v, 2) != OT_INTEGER) {
+        return sq_throwerror(v, _SC("invalid type of parameter <size>"));
+    }
+    SQInteger size;
+    sq_getinteger(v, 2, &size);
+
+    sq_pushbool(v, This->setBufferSize(size));
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.process(in [, out])
+static SQInteger script_zstream_process(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    // get in
+    if (!IsBlob(v, 2)) {
+        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    }
+    Blob* in = GetBlob(v, 2);
+    assert(in);
+    if (in->getSize() == 0) {
+        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    }
+
+    if (sq_gettop(v) >= 3) {
+        if (!IsBlob(v, 3)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 3);
+        assert(out);
+
+        if (!This->process(in->getBuffer(), in->getSize(), out)) {
+            return sq_throwerror(v, _SC("processing failed"));
+        }
+
+        sq_push(v, 3);
+
+    } else {
+        BlobPtr out = Blob::Create();
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->process(in->getBuffer(), in->getSize(), out.get())) {
+            return sq_throwerror(v, _SC("processing failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream.finish([out])
+static SQInteger script_zstream_finish(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    if (sq_gettop(v) >= 2) {
+        if (!IsBlob(v, 2)) {
+            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+        }
+        Blob* out = GetBlob(v, 2);
+        assert(out);
+
+        if (!This->finish(out)) {
+            return sq_throwerror(v, _SC("finishing failed"));
+        }
+
+        sq_push(v, 2);
+
+    } else {
+        BlobPtr out = Blob::Create();
+        if (!out) {
+            return sq_throwerror(v, _SC("out of memory"));
+        }
+
+        if (!This->finish(out.get())) {
+            return sq_throwerror(v, _SC("finishing failed"));
+        }
+
+        if (!BindBlob(v, out.get())) {
+            return sq_throwerror(v, _SC("internal error"));
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream._typeof()
+static SQInteger script_zstream__typeof(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    sq_pushstring(v, _SC("ZStream"), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// ZStream._tostring()
+static SQInteger script_zstream__tostring(HSQUIRRELVM v)
+{
+    ZStream* This = 0;
+    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
+        return sq_throwerror(v, _SC("invalid environment object"));
+    }
+    assert(This);
+
+    std::ostringstream oss;
+    oss << "<ZStream instance>";
+    sq_pushstring(v, oss.str().c_str(), -1);
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool IsZStream(HSQUIRRELVM v, SQInteger idx)
+{
+    if (sq_gettype(v, idx) == OT_INSTANCE) {
+        SQUserPointer tt;
+        sq_gettypetag(v, idx, &tt);
+        return tt == TT_ZSTREAM;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------
+ZStream* GetZStream(HSQUIRRELVM v, SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_ZSTREAM))) {
+        return (ZStream*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+bool BindZStream(HSQUIRRELVM v, ZStream* stream)
+{
+    if (!stream) {
+        return false;
+    }
+    sq_pushobject(v, g_zstream_class); // push zstream class
+    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
+        sq_poptop(v); // pop zstream class
+        return false;
+    }
+    sq_remove(v, -2); // pop zstream class
+    sq_setreleasehook(v, -1, script_zstream_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)stream);
+    stream->grab(); // grab a new reference
     return true;
 }
 

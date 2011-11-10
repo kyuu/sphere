@@ -17,6 +17,7 @@ public:
     }
 
     virtual bool init() = 0;
+    virtual bool isInitialized() const = 0;
     virtual int  getType() const = 0;
     virtual bool process(const u8* buf, int len) = 0;
     virtual bool finish(Blob* hash) = 0;
