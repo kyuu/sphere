@@ -8,18 +8,10 @@
 #include "joystick.hpp"
 
 
-namespace input {
+void UpdateInput();
 
-    void UpdateInput();
-
-    namespace internal {
-
-        bool InitInput(const Log& log);
-        void DeinitInput(const Log& log);
-
-    } // namespace internal
-
-} // namespace input
+bool InitInput(const Log& log);
+void DeinitInput(const Log& log);
 
 
 #endif

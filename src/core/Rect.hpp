@@ -94,22 +94,22 @@ struct Rect {
         return Rect(x1, y1, x2, y2);
     }
 
-    bool contains(const Rect<T>& that) const {
-        return ((that.ul.x >= ul.x && that.ul.x <= lr.x) &&
-                (that.lr.x >= ul.x && that.lr.x <= lr.x) &&
-                (that.ul.y >= ul.y && that.ul.y <= lr.y) &&
-                (that.lr.y >= ul.y && that.lr.y <= lr.y));
-    }
-
-    bool isPointInside(T x, T y) const {
+    bool contains(T x, T y) const {
         return (ul.x <= x &&
                 ul.y <= y &&
                 lr.x >= x &&
                 lr.y >= y);
     }
 
-    bool isPointInside(const Vec2<T>& p) const {
-        return isPointInside(p.x, p.y);
+    bool contains(const Vec2<T>& p) const {
+        return contains(p.x, p.y);
+    }
+
+    bool contains(const Rect<T>& that) const {
+        return ((that.ul.x >= ul.x && that.ul.x <= lr.x) &&
+                (that.lr.x >= ul.x && that.lr.x <= lr.x) &&
+                (that.ul.y >= ul.y && that.ul.y <= lr.y) &&
+                (that.lr.y >= ul.y && that.lr.y <= lr.y));
     }
 
 };

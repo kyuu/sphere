@@ -5,43 +5,33 @@
 #include "IStream.hpp"
 
 
-namespace io {
+bool readi8(IStream* s, i8& n);
 
-    // read endian independent
-    bool readu8(IStream* s, u8& out);
+bool readi16l(IStream* s, i16& n);
+bool readi32l(IStream* s, i32& n);
+bool readi64l(IStream* s, i64& n);
+bool readf32l(IStream* s, f32& n);
+bool readf64l(IStream* s, f64& n);
 
-    // read little endian
-    bool readu16l(IStream* s, u16& out);
-    bool readu32l(IStream* s, u32& out);
-    bool readu64l(IStream* s, u64& out);
-    bool readf32l(IStream* s, f32& out);
-    bool readf64l(IStream* s, f64& out);
+bool readi16b(IStream* s, i16& n);
+bool readi32b(IStream* s, i32& n);
+bool readi64b(IStream* s, i64& n);
+bool readf32b(IStream* s, f32& n);
+bool readf64b(IStream* s, f64& n);
 
-    // read big endian
-    bool readu16b(IStream* s, u16& out);
-    bool readu32b(IStream* s, u32& out);
-    bool readu64b(IStream* s, u64& out);
-    bool readf32b(IStream* s, f32& out);
-    bool readf64b(IStream* s, f64& out);
+bool writei8(IStream* s, i8 n);
 
-    // write endian independent
-    bool writeu8(IStream* s, u8 n, int count = 1);
+bool writei16l(IStream* s, i16 n);
+bool writei32l(IStream* s, i32 n);
+bool writei64l(IStream* s, i64 n);
+bool writef32l(IStream* s, f32 n);
+bool writef64l(IStream* s, f64 n);
 
-    // write little endian
-    bool writeu16l(IStream* s, u16 n);
-    bool writeu32l(IStream* s, u32 n);
-    bool writeu64l(IStream* s, u64 n);
-    bool writef32l(IStream* s, f32 n);
-    bool writef64l(IStream* s, f64 n);
-
-    // write big endian
-    bool writeu16b(IStream* s, u16 n);
-    bool writeu32b(IStream* s, u32 n);
-    bool writeu64b(IStream* s, u64 n);
-    bool writef32b(IStream* s, f32 n);
-    bool writef64b(IStream* s, f64 n);
-
-} // namespace io
+bool writei16b(IStream* s, i16 n);
+bool writei32b(IStream* s, i32 n);
+bool writei64b(IStream* s, i64 n);
+bool writef32b(IStream* s, f32 n);
+bool writef64b(IStream* s, f64 n);
 
 
 #endif

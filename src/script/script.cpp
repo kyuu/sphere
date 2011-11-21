@@ -9,32 +9,25 @@
 #include <sqstdstring.h>
 #include "../common/ArrayPtr.hpp"
 #include "../Log.hpp"
+#include "../error.hpp"
 #include "../core/Rect.hpp"
 #include "../core/Vec2.hpp"
-#include "../io/io.hpp"
-#include "../graphics/graphics.hpp"
+#include "../io/endian.hpp"
+#include "../io/Blob.hpp"
+#include "../graphics/RGBA.hpp"
+#include "../graphics/Canvas.hpp"
+#include "../image/image.hpp"
 #include "../system/system.hpp"
 #include "../filesystem/filesystem.hpp"
 #include "../video/video.hpp"
 #include "../audio/audio.hpp"
 #include "../input/input.hpp"
 #include "script.hpp"
+#include "typetags.hpp"
+#include "macros.hpp"
 
-// type tags
-#define TT_STREAM       ((SQUserPointer)100)
-#define TT_FILE         ((SQUserPointer)101)
-#define TT_BLOB         ((SQUserPointer)102)
-#define TT_CANVAS       ((SQUserPointer)103)
-#define TT_RGBA         ((SQUserPointer)104)
-#define TT_RECT         ((SQUserPointer)105)
-#define TT_VEC2         ((SQUserPointer)106)
-#define TT_TEXTURE      ((SQUserPointer)107)
-#define TT_SOUND        ((SQUserPointer)108)
-#define TT_SOUNDEFFECT  ((SQUserPointer)109)
-#define TT_FORCEEFFECT  ((SQUserPointer)110)
-#define TT_CIPHER       ((SQUserPointer)111)
-#define TT_HASH         ((SQUserPointer)112)
-#define TT_ZSTREAM      ((SQUserPointer)113)
+#define   SCRIPT_FILE_EXT ".script"
+#define BYTECODE_FILE_EXT ".bytecode"
 
 // marshal magic numbers
 #define MARSHAL_MAGIC_NULL         ((u32)0x6a9edf86)
@@ -51,23 +44,30 @@
 
 //-----------------------------------------------------------------
 // globals
-Log* g_log = 0;
-std::vector<std::string> g_loaded_scripts;
-static HSQUIRRELVM g_sqvm = 0;
-static HSQOBJECT g_stream_class;
-static HSQOBJECT g_file_class;
-static HSQOBJECT g_blob_class;
-static HSQOBJECT g_canvas_class;
-static HSQOBJECT g_rgba_class;
-static HSQOBJECT g_rect_class;
-static HSQOBJECT g_vec2_class;
-static HSQOBJECT g_texture_class;
-static HSQOBJECT g_sound_class;
-static HSQOBJECT g_soundeffect_class;
-static HSQOBJECT g_forceeffect_class;
-static HSQOBJECT g_cipher_class;
-static HSQOBJECT g_hash_class;
-static HSQOBJECT g_zstream_class;
+
+// squirrel vm
+static HSQUIRRELVM g_VM = 0;
+
+// log instance used by the print function
+static Log* g_Log = 0;
+
+// holds all scripts which have been loaded through RequireScript
+static std::vector<std::string> g_ScriptRegistry;
+
+// strong references to each of sphere's built-in classes
+static HSQOBJECT g_StreamClass;
+static HSQOBJECT g_FileClass;
+static HSQOBJECT g_BlobClass;
+static HSQOBJECT g_CanvasClass;
+static HSQOBJECT g_RectClass;
+static HSQOBJECT g_Vec2Class;
+static HSQOBJECT g_TextureClass;
+static HSQOBJECT g_SoundClass;
+static HSQOBJECT g_SoundEffectClass;
+static HSQOBJECT g_ForceEffectClass;
+static HSQOBJECT g_CipherClass;
+static HSQOBJECT g_HashClass;
+static HSQOBJECT g_CompressionStreamClass;
 
 /******************************************************************
  *                                                                *
@@ -77,394 +77,216 @@ static HSQOBJECT g_zstream_class;
 
 /***************************** RECT *******************************/
 
+#define SETUP_RECT_OBJECT() \
+    Recti* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Rect instance") \
+    }
+
 //-----------------------------------------------------------------
-// Rect(x1, y1, x2, y2)
-// Rect(ul, lr)
+// Rect(x, y, width, height)
 static SQInteger script_rect_constructor(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    if (sq_gettype(v, 2) == OT_INSTANCE) { // assume the call is: Rect(ul, lr)
-        // get ul
-        if (!IsVec2(v, 2)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <ul>"));
-        }
-        Vec2i* ul = GetVec2(v, 2);
-        assert(ul);
-
-        // get lr
-        if (!IsVec2(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <lr>"));
-        }
-        Vec2i* lr = GetVec2(v, 3);
-        assert(lr);
-
-        // initialize with two vectors
-        new (This) Recti(*ul, *lr);
-
-    } else { // assume the call is: Rect(x1, y1, x2, y2)
-        // get x1
-        SQInteger x1;
-        if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <x1>"));
-        }
-        sq_getinteger(v, 2, &x1);
-
-        // get y1
-        SQInteger y1;
-        if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <y1>"));
-        }
-        sq_getinteger(v, 3, &y1);
-
-        // get x2
-        SQInteger x2;
-        if (sq_gettype(v, 4) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <x2>"));
-        }
-        sq_getinteger(v, 4, &x2);
-
-        // get y2
-        SQInteger y2;
-        if (sq_gettype(v, 5) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <y2>"));
-        }
-        sq_getinteger(v, 5, &y2);
-
-        // initialize with four integers
-        new (This) Recti(x1, y1, x2, y2);
-    }
-    return 0;
-}
-
-//-----------------------------------------------------------------
-// Rect.getWidth()
-static SQInteger script_rect_getWidth(HSQUIRRELVM v)
-{
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getWidth());
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Rect.getHeight()
-static SQInteger script_rect_getHeight(HSQUIRRELVM v)
-{
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getHeight());
-    return 1;
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(4)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    GET_ARG_INT(3, width)
+    GET_ARG_INT(4, height)
+    new (This) Recti(x, y, x + width - 1, y + height - 1);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Rect.isValid()
 static SQInteger script_rect_isValid(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(This->isValid());
-    return 1;
+    SETUP_RECT_OBJECT()
+    RET_BOOL(This->isValid())
 }
 
 //-----------------------------------------------------------------
 // Rect.intersects(other)
 static SQInteger script_rect_intersects(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Recti* other = GetRect(v, 2);
-    assert(other);
-
-    sq_pushbool(v, This->intersects(*other));
-    return 1;
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, other)
+    RET_BOOL(This->intersects(*other))
 }
 
 //-----------------------------------------------------------------
 // Rect.getIntersection(other)
 static SQInteger script_rect_getIntersection(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Recti* other = GetRect(v, 2);
-    assert(other);
-
-    if (!BindRect(This->getIntersection(*other))) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, other)
+    RET_RECT(This->getIntersection(*other))
 }
 
 //-----------------------------------------------------------------
-// Rect.isPointInside(x, y)
-// Rect.isPointInside(point)
+// Rect.containsPoint(x, y)
 static SQInteger script_rect_isPointInside(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    RET_BOOL(This->contains(x, y))
+}
 
-    if (sq_gettype(v, 2) == OT_INSTANCE) { // assume the call is: Rect.isPointInside(point)
-        // get point
-        if (!IsVec2(v, 2)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <point>"));
-        }
-        Vec2i* point = GetVec2(v, 2);
-        assert(point);
-
-        sq_pushbool(v, This->isPointInside(*point));
-    } else { // assume the call is: Rect.isPointInside(x, y)
-        // get x
-        SQInteger x;
-        if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <x>"));
-        }
-        sq_getinteger(v, 2, &x);
-
-        // get y
-        SQInteger y;
-        if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <y>"));
-        }
-        sq_getinteger(v, 3, &y);
-
-        sq_pushbool(v, This->isPointInside(x, y));
-    }
-    return 1;
+//-----------------------------------------------------------------
+// Rect.containsRect(rect)
+static SQInteger script_rect_isPointInside(HSQUIRRELVM v)
+{
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, rect)
+    RET_BOOL(This->contains(*rect))
 }
 
 //-----------------------------------------------------------------
 // Rect._get(index)
 static SQInteger script_rect__get(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("ul")) == 0) {
-        if (!BindVec2(v, This->ul)) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-    } else if (scstrcmp(index, _SC("lr")) == 0) {
-        if (!BindVec2(v, This->lr)) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "x") == 0) {
+        RET_INT(This->ul.x)
+    } else if (strcmp(index, "y") == 0) {
+        RET_INT(This->ul.y)
+    } else if (strcmp(index, "width") == 0) {
+        RET_INT(This->getWidth())
+    } else if (strcmp(index, "height") == 0) {
+        RET_INT(This->getHeight())
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Rect._set(index, value)
 static SQInteger script_rect__set(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("ul")) == 0) {
-        if (!IsVec2(v, 3)) {
-            return sq_throwerror(v, _SC("invalid parameter <value>"));
-        }
-        Vec2i* ul = GetVec2(v, 3);
-        assert(ul);
-
-        This->ul = *ul;
-    } else if (scstrcmp(index, _SC("lr")) == 0) {
-        if (!IsVec2(v, 3)) {
-            return sq_throwerror(v, _SC("invalid parameter <value>"));
-        }
-        Vec2i* lr = GetVec2(v, 3);
-        assert(lr);
-
-        This->lr = *lr;
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "x") == 0) {
+        GET_ARG_INT(2, value)
+        This->lr.x = value + This->getWidth() - 1;
+        This->ul.x = value;
+    } else if (strcmp(index, "y") == 0) {
+        GET_ARG_INT(2, value)
+        This->lr.y = value + This->getHeight() - 1;
+        This->ul.y = value;
+    } else if (strcmp(index, "width") == 0) {
+        GET_ARG_INT(2, value)
+        This->lr.x = This->ul.x + value - 1;
+    } else if (strcmp(index, "height") == 0) {
+        GET_ARG_INT(2, value)
+        This->lr.y = This->ul.y + value - 1;
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Rect._typeof()
 static SQInteger script_rect__typeof(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Rect"), -1);
-    return 1;
+    SETUP_RECT_OBJECT()
+    RET_STRING("Rect")
 }
 
 //-----------------------------------------------------------------
 // Rect._cloned(rect)
 static SQInteger script_rect__cloned(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get original rect
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rect>"));
-    }
-    Recti* orig = GetRect(v, 2);
-    assert(orig);
-
-    // clone rect
-    new (This) Recti(*orig);
-    return 0;
+    SETUP_RECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, original)
+    new (This) Recti(*original);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Rect._tostring()
 static SQInteger script_rect__tostring(HSQUIRRELVM v)
 {
-    Recti* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_RECT_OBJECT()
     std::ostringstream oss;
-    oss << "<Rect instance (" << This->ul.x;
-    oss <<    ", " << This->ul.y;
-    oss <<    ", " << This->lr.x;
-    oss <<    ", " << This->lr.y;
+    oss << "<Rect instance at " << This;
+    oss << " (x = " << This->ul.x;
+    oss << ", y =" << This->ul.y;
+    oss << ", width = " << This->getWidth();
+    oss << ", height = " << This->getHeight();
     oss << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-// Rect._dump(rect, stream)
+// Rect._dump(instance, stream)
 static SQInteger script_rect__dump(HSQUIRRELVM v)
 {
-    // get rect
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rect>"));
-    }
-    Recti* rect = GetRect(v, 2);
-    assert(rect);
+    CHECK_NARGS(2)
+    GET_ARG_RECT(1, instance)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
-    if (!stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    if (!stream->isOpen() || !stream->isWriteable()) {
+        THROW_ERROR("Invalid output stream")
     }
 
     // write class name
     const char* class_name = "Rect";
     int class_name_size = strlen(class_name);
-    if (!writeu32l(stream, class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
+    if (!writei32l(stream, (i32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
         goto throw_write_error;
     }
 
-    // write rect
-    if (!writeu32l(stream, (u32)rect->ul.x) || !writeu32l(stream, (u32)rect->ul.y) ||
-        !writeu32l(stream, (u32)rect->lr.x) || !writeu32l(stream, (u32)rect->lr.y)) {
+    // write instance
+    if (!writei32l(stream, instance->ul.x) ||
+        !writei32l(stream, instance->ul.y) ||
+        !writei32l(stream, instance->lr.x) ||
+        !writei32l(stream, instance->lr.y))
+    {
         goto throw_write_error;
     }
-    return 0;
+
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // Rect._load(stream)
 static SQInteger script_rect__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
-    // read rect
-    Recti rect;
-    if (!readu32l(stream, (u32)rect.ul.x) ||
-        !readu32l(stream, (u32)rect.ul.y) ||
-        !readu32l(stream, (u32)rect.lr.x) ||
-        !readu32l(stream, (u32)rect.lr.y)) {
-        return sq_throwerror(v, _SC("read error"));
+    // read instance
+    Recti instance;
+    if (!readi32l(stream, instance.ul.x) ||
+        !readi32l(stream, instance.ul.y) ||
+        !readi32l(stream, instance.lr.x) ||
+        !readi32l(stream, instance.lr.y))
+    {
+        THROW_ERROR("Read error")
     }
 
-    if (!BindRect(v, rect) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_RECT(instance)
 }
 
 //-----------------------------------------------------------------
@@ -479,597 +301,350 @@ bool IsRect(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-Recti* GetRect(HSQUIRRELVM v, SQInteger idx)
+void BindRect(const Recti& rect)
+{
+    assert(g_RectClass._type == OT_CLASS);
+    sq_pushobject(g_VM, g_RectClass); // push rect class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop rect class
+    SQUserPointer p = 0;
+    sq_getinstanceup(g_VM, -1, &p, 0);
+    assert(p);
+    new (p) Recti(rect);
+}
+
+//-----------------------------------------------------------------
+Recti* GetRect(SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_RECT))) {
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_RECT))) {
         return (Recti*)p;
     }
     return 0;
 }
 
-//-----------------------------------------------------------------
-bool BindRect(HSQUIRRELVM v, const Recti& rect)
-{
-    sq_pushobject(v, g_rect_class); // push rect class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop rect class
-        return false;
-    }
-    sq_remove(v, -2); // pop rect class
-    SQUserPointer p = 0;
-    sq_getinstanceup(v, -1, &p, 0);
-    assert(p);
-    new (p) Recti(rect);
-    return true;
-}
-
 /***************************** VEC2 *******************************/
+
+#define SETUP_VEC2_OBJECT() \
+    Vec2i* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Vec2 instance") \
+    }
 
 //-----------------------------------------------------------------
 // Vec2(x, y)
 static SQInteger script_vec2_constructor(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get x
-    SQInteger x;
-    if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <x>"));
-    }
-    sq_getinteger(v, 2, &x);
-
-    // get y
-    SQInteger y;
-    if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <y>"));
-    }
-    sq_getinteger(v, 3, &y);
-
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
     new (This) Vec2i(x, y);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Vec2.len()
-static SQInteger script_vec2_len(HSQUIRRELVM v)
+// Vec2.getLength()
+static SQInteger script_vec2_getLength(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushfloat(v, (SQFloat)This->len());
-    return 1;
+    SETUP_VEC2_OBJECT()
+    RET_FLOAT((SQFloat)This->len())
 }
 
 //-----------------------------------------------------------------
-// Vec2.lenSQ()
-static SQInteger script_vec2_lenSQ(HSQUIRRELVM v)
+// Vec2.getDotProduct(other)
+static SQInteger script_vec2_getDotProduct(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->lenSQ());
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, other)
+    RET_INT(This->dot(*other))
 }
 
 //-----------------------------------------------------------------
-// Vec2.dot(other)
-static SQInteger script_vec2_dot(HSQUIRRELVM v)
+// Vec2.setNull()
+static SQInteger script_vec2_setNull(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Vec2i* other = GetVec2(v, 2);
-    assert(other);
-
-    sq_pushinteger(v, This->dot(*other));
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Vec2.null()
-static SQInteger script_vec2_null(HSQUIRRELVM v)
-{
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_VEC2_OBJECT()
     This->null();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Vec2.unit()
-static SQInteger script_vec2_unit(HSQUIRRELVM v)
+// Vec2.normalize()
+static SQInteger script_vec2_normalize(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_VEC2_OBJECT()
     This->unit();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Vec2.distFrom(other)
-static SQInteger script_vec2_distFrom(HSQUIRRELVM v)
+// Vec2.getDistanceFrom(other)
+static SQInteger script_vec2_getDistanceFrom(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Vec2i* other = GetVec2(v, 2);
-    assert(other);
-
-    sq_pushfloat(v, (SQFloat)This->distFrom(*other));
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, other)
+    RET_FLOAT((SQFloat)This->distFrom(*other))
 }
 
 //-----------------------------------------------------------------
-// Vec2.distFromSQ(other)
-static SQInteger script_vec2_distFromSQ(HSQUIRRELVM v)
-{
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Vec2i* other = GetVec2(v, 2);
-    assert(other);
-
-    sq_pushinteger(v, This->distFromSQ(*other));
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Vec2.rotateBy(degrees [, center = Vec2(0, 0)])
+// Vec2.rotateBy(degrees [, center])
 static SQInteger script_vec2_rotateBy(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get degrees
-    SQInteger degrees;
-    if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <degrees>"));
-    }
-    sq_getinteger(v, 2, &degrees);
-
-    // get optional center
-    Vec2i* center = 0;
-    if (sq_gettop(v) >= 3) {
-        if (!IsVec2(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <center>"));
-        }
-        center = GetVec2(v, 3);
-        assert(center);
-    }
-
+    SETUP_VEC2_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_INT(1, degrees)
+    GET_OPTARG_VEC2(2, center)
     if (center) {
         This->rotateBy(degrees, *center);
     } else {
         This->rotateBy(degrees);
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Vec2.getAngle()
 static SQInteger script_vec2_getAngle(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushfloat(v, (SQFloat)This->getAngle());
-    return 1;
+    SETUP_VEC2_OBJECT()
+    RET_FLOAT((SQFloat)This->getAngle())
 }
 
 //-----------------------------------------------------------------
 // Vec2.getAngleWith(other)
 static SQInteger script_vec2_getAngleWith(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Vec2i* other = GetVec2(v, 2);
-    assert(other);
-
-    sq_pushfloat(v, (SQFloat)This->getAngleWith(*other));
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, other)
+    RET_FLOAT((SQFloat)This->getAngleWith(*other))
 }
 
 //-----------------------------------------------------------------
 // Vec2.isBetween(a, b)
 static SQInteger script_vec2_isBetween(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get a
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <a>"));
-    }
-    Vec2i* a = GetVec2(v, 2);
-    assert(a);
-
-    // get b
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <b>"));
-    }
-    Vec2i* b = GetVec2(v, 3);
-    assert(b);
-
-    sq_pushbool(v, This->isBetween(*a, *b));
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_VEC2(1, a)
+    GET_ARG_VEC2(2, b)
+    RET_BOOL(This->isBetween(*a, *b))
 }
 
 //-----------------------------------------------------------------
 // Vec2.getInterpolated(other, d)
 static SQInteger script_vec2_getInterpolated(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get other
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <other>"));
-    }
-    Vec2i* other = GetVec2(v, 2);
-    assert(other);
-
-    // get d
-    SQFloat d;
-    if (sq_gettype(v, 3) != OT_FLOAT) {
-        return sq_throwerror(v, _SC("invalid type of parameter <d>"));
-    }
-    sq_getfloat(v, 3, &d);
-
-    if (!BindVec2(v, This->getInterpolated(*other, d))) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_VEC2(1, other)
+    GET_ARG_FLOAT(2, d)
+    RET_VEC2(This->getInterpolated(*other, d))
 }
 
 //-----------------------------------------------------------------
 // Vec2.interpolate(a, b, d)
 static SQInteger script_vec2_interpolate(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get a
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <a>"));
-    }
-    Vec2i* a = GetVec2(v, 2);
-    assert(a);
-
-    // get b
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <b>"));
-    }
-    Vec2i* b = GetVec2(v, 3);
-    assert(b);
-
-    // get d
-    SQFloat d;
-    if (sq_gettype(v, 4) != OT_FLOAT) {
-        return sq_throwerror(v, _SC("invalid type of parameter <d>"));
-    }
-    sq_getfloat(v, 4, &d);
-
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(3)
+    GET_ARG_VEC2(1, a)
+    GET_ARG_VEC2(2, b)
+    GET_ARG_FLOAT(3, d)
     This->interpolate(*a, *b, d);
-    return 0;
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Vec2.add(rhs)
+static SQInteger script_vec2_add(HSQUIRRELVM v)
+{
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, rhs)
+    *This += *rhs;
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Vec2.subtract(rhs)
+static SQInteger script_vec2_subtract(HSQUIRRELVM v)
+{
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, rhs)
+    *This -= *rhs;
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Vec2.multiply(scalar)
+static SQInteger script_vec2_multiply(HSQUIRRELVM v)
+{
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_FLOAT(1, scalar)
+    *This *= scalar;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Vec2._add(rhs)
 static SQInteger script_vec2__add(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get rhs
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rhs>"));
-    }
-    Vec2i* rhs = GetVec2(v, 2);
-    assert(rhs);
-
-    if (!BindVec2(v, *This + *rhs)) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, rhs)
+    RET_VEC2(*This + *rhs)
 }
 
 //-----------------------------------------------------------------
 // Vec2._sub(rhs)
 static SQInteger script_vec2__sub(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get rhs
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rhs>"));
-    }
-    Vec2i* rhs = GetVec2(v, 2);
-    assert(rhs);
-
-    if (!BindVec2(v, *This - *rhs)) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, rhs)
+    RET_VEC2(*This - *rhs)
 }
 
 //-----------------------------------------------------------------
 // Vec2._mul(scalar)
 static SQInteger script_vec2__mul(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get scalar
-    SQFloat scalar;
-    if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <scalar>"));
-    }
-    sq_getfloat(v, 2, &scalar);
-
-    if (!BindVec2(v, *This * scalar)) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_FLOAT(1, scalar)
+    RET_VEC2(*This * scalar)
 }
 
 //-----------------------------------------------------------------
 // Vec2._get(index)
 static SQInteger script_vec2__get(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("x")) == 0) {
-        sq_pushinteger(v, This->x);
-    } else if (scstrcmp(index, _SC("y")) == 0) {
-        sq_pushinteger(v, This->y);
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "x") == 0) {
+        RET_INT(This->x)
+    } else if (strcmp(index, "y") == 0) {
+        RET_INT(This->y)
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Vec2._set(index, value)
 static SQInteger script_vec2__set(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // get value
-    SQInteger value;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-    }
-    sq_getinteger(v, 3, &value);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("x")) == 0) {
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "x") == 0) {
+        GET_ARG_INT(2, value)
         This->x = value;
-    } else if (scstrcmp(index, _SC("y")) == 0) {
+    } else if (strcmp(index, "y") == 0) {
+        GET_ARG_INT(2, value)
         This->y = value;
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Vec2._typeof()
 static SQInteger script_vec2__typeof(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Vec2"), -1);
-    return 1;
+    SETUP_VEC2_OBJECT()
+    RET_STRING("Vec2")
 }
 
 //-----------------------------------------------------------------
-// Vec2._cloned(vec2)
+// Vec2._cloned(original)
 static SQInteger script_vec2__cloned(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get original vec2
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <vec2>"));
-    }
-    Vec2i* orig = GetVec2(v, 2);
-    assert(orig);
-
-    // clone vec2
-    new (This) Vec2i(*orig);
-    return 0;
+    SETUP_VEC2_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_VEC2(1, original)
+    new (This) Vec2i(*original);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Vec2._tostring()
 static SQInteger script_vec2__tostring(HSQUIRRELVM v)
 {
-    Vec2i* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_VEC2_OBJECT()
     std::ostringstream oss;
-    oss << "<Vec2 instance (" << This->x;
-    oss <<    ", " << This->y;
+    oss << "<Vec2 instance at " << This;
+    oss << " (x = " << This->x;
+    oss << ", y = " << This->y
     oss << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-// Vec2._dump(vec2, stream)
+// Vec2._dump(instance, stream)
 static SQInteger script_vec2__dump(HSQUIRRELVM v)
 {
-    // get vec2
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <vec2>"));
-    }
-    Vec2i* vec2 = GetVec2(v, 2);
-    assert(vec2);
+    CHECK_NARGS(2)
+    GET_ARG_VEC2(1, object)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
-    if (!stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    if (!stream->isOpen() || !stream->isWriteable()) {
+        THROW_ERROR("Invalid output stream")
     }
 
     // write class name
     const char* class_name = "Vec2";
     int class_name_size = strlen(class_name);
-    if (!writeu32l(stream, class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
+    if (!writei32l(stream, (i32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
         goto throw_write_error;
     }
 
-    // write vec2
-    if (!writeu32l(stream, (u32)vec2->x) ||
-        !writeu32l(stream, (u32)vec2->y)) {
+    // write instance
+    if (!writei32l(stream, instance->x) ||
+        !writei32l(stream, instance->y))
+    {
         goto throw_write_error;
     }
-    return 0;
+
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // Vec2._load(stream)
 static SQInteger script_vec2__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
-    // read vec2
-    Vec2i vec2;
-    if (!readu32l(stream, (u32)vec2.x) ||
-        !readu32l(stream, (u32)vec2.y)) {
-        return sq_throwerror(v, _SC("read error"));
+    // read instance
+    Vec2i instance;
+    if (!readi32l(stream, instance.x) ||
+        !readi32l(stream, instance.y))
+    {
+        THROW_ERROR("Read error")
     }
 
-    if (!BindVec2(v, vec2) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_VEC2(instance)
 }
 
 //-----------------------------------------------------------------
@@ -1084,29 +659,27 @@ bool IsVec2(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-Vec2i* GetVec2(HSQUIRRELVM v, SQInteger idx)
+void BindVec2(const Vec2i& vec)
 {
+    assert(g_Vec2Class._type == OT_CLASS);
+    sq_pushobject(g_VM, g_Vec2Class); // push vec2 class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop vec2 class
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_VEC2))) {
-        return (Vec2i*)p;
-    }
-    return 0;
+    sq_getinstanceup(g_VM, -1, &p, 0);
+    assert(p);
+    new (p) Vec2i(vec);
 }
 
 //-----------------------------------------------------------------
-bool BindVec2(HSQUIRRELVM v, const Vec2i& vec)
+Vec2i* GetVec2(SQInteger idx)
 {
-    sq_pushobject(v, g_vec2_class); // push vec2 class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop vec2 class
-        return false;
-    }
-    sq_remove(v, -2); // pop vec2 class
     SQUserPointer p = 0;
-    sq_getinstanceup(v, -1, &p, 0);
-    assert(p);
-    new (p) Vec2i(vec);
-    return true;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_VEC2))) {
+        return (Vec2i*)p;
+    }
+    return 0;
 }
 
 /******************************************************************
@@ -1116,6 +689,12 @@ bool BindVec2(HSQUIRRELVM v, const Vec2i& vec)
  ******************************************************************/
 
 /***************************** STREAM *****************************/
+
+#define SETUP_STREAM_OBJECT() \
+    IStream* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Stream instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_stream_destructor(SQUserPointer p, SQInteger size)
@@ -1129,224 +708,114 @@ static SQInteger script_stream_destructor(SQUserPointer p, SQInteger size)
 // Stream.isOpen()
 static SQInteger script_stream_isOpen(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isOpen());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_BOOL(This->isOpen())
 }
 
 //-----------------------------------------------------------------
 // Stream.isReadable()
 static SQInteger script_stream_isReadable(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isReadable());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_BOOL(This->isReadable())
 }
 
 //-----------------------------------------------------------------
 // Stream.isWriteable()
 static SQInteger script_stream_isWriteable(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isWriteable());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_BOOL(This->isWriteable())
 }
 
 //-----------------------------------------------------------------
 // Stream.close()
 static SQInteger script_stream_close(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_STREAM_OBJECT()
     This->close();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Stream.tell()
 static SQInteger script_stream_isReadable(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->tell());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_INT(This->tell())
 }
 
 //-----------------------------------------------------------------
-// Stream.seek(offset [, origin])
+// Stream.seek(offset [, origin = Stream.BEG])
 static SQInteger script_stream_seek(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get offset
-    SQInteger offset;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <offset>"));
-    }
-    sq_getinteger(v, 2, &offset);
-
-    // get optional origin
-    SQInteger origin = IStream::BEG;
-    if (sq_gettop(v) >= 3) {
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <origin>"));
-        }
-        sq_getinteger(v, 3, &origin);
-    }
-
-    sq_pushbool(v, This->seek(offset, origin));
-    return 1;
+    SETUP_STREAM_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_INT(1, offset)
+    GET_OPTARG_INT(2, origin, IStream::BEG)
+    RET_BOOL(This->seek(offset, origin))
 }
 
 //-----------------------------------------------------------------
 // Stream.read(size)
 static SQInteger script_stream_read(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // the return value
-    BlobPtr blob = Blob::Create();
-    if (!blob) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    // get size
-    SQInteger size;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <size>"));
-    }
-    sq_getinteger(v, 2, &size);
+    SETUP_STREAM_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, size)
     if (size < 0) {
-        return sq_throwerror(v, _SC("invalid parameter <size>"));
+        THROW_ERROR("Invalid size")
     }
+    BlobPtr blob = Blob::Create(size);
     if (size == 0) {
-        goto return_blob;
+        RET_BLOB(blob.release())
     }
-
-    // read
     blob->resize(size);
     if (This->read(blob->getBuffer(), size) != size) {
-        return sq_throwerror(v, _SC("read error"));
+        THROW_ERROR("Read error")
     }
-
-return_blob:
-    if (!BindBlob(v, blob.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(blob.release())
 }
 
 //-----------------------------------------------------------------
-// Stream.write(blob [, start, count])
+// Stream.write(blob [, offset = 0, count = -1])
 static SQInteger script_stream_write(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
-    if (blob->getSize() == 0) {
-        return 0;
-    }
-
-    // get optional start
-    SQInteger start = 0;
-    if (sq_gettop(v) >= 3) {
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <start>"));
+    SETUP_STREAM_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, blob)
+    GET_OPTARG_INT(2, offset, 0)
+    GET_OPTARG_INT(3, count, -1)
+    if (blob->getSize() > 0 && count != 0) {
+        if (offset < 0 || offset >= blob->getSize()) {
+            THROW_ERROR("Invalid offset")
         }
-        sq_getinteger(v, 3, &start);
-    }
-    if (start < 0 || start >= blob->getSize()) {
-        return sq_throwerror(v, _SC("invalid parameter <start>"));
-    }
-
-    // get optional count
-    SQInteger count = blob->getSize();
-    if (sq_gettop(v) >= 4) {
-        if (sq_gettype(v, 4) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <count>"));
+        if (count < 0) {
+            count = blob->getSize() - offset;
+        } else if (offset + count > blob->getSize()) {
+            THROW_ERROR("Invalid count")
         }
-        sq_getinteger(v, 4, &count);
+        if (This->write(blob->getBuffer() + offset, count) != count) {
+            THROW_ERROR("Write error")
+        }
     }
-    if (count < 0 || start + count > blob->getSize()) {
-        return sq_throwerror(v, _SC("invalid parameter <count>"));
-    }
-    if (count == 0) {
-        return 0;
-    }
-
-    // write
-    if (This->write(blob->getBuffer() + start, count) != size) {
-        return sq_throwerror(v, _SC("write error"));
-    }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Stream.flush()
 static SQInteger script_stream_flush(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->flush());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_BOOL(This->flush())
 }
 
 //-----------------------------------------------------------------
 // Stream.eof()
 static SQInteger script_stream_eof(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->eof());
-    return 1;
+    SETUP_STREAM_OBJECT()
+    RET_BOOL(This->eof())
 }
 
 //-----------------------------------------------------------------
@@ -1364,458 +833,150 @@ static SQInteger script_stream_eof(HSQUIRRELVM v)
 // 'h': host endian
 static SQInteger script_stream_readNumber(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get type
-    SQInteger type;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    sq_getinteger(v, 2, &type);
-
-    // get optional endian
-    SQInteger endian = 'l';
-    if (sq_gettop(v) >= 3 && sq_gettype(v, 3) == OT_INTEGER) {
-        sq_getinteger(v, 3, &endian);
-    }
-
-    // read
+    SETUP_STREAM_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_INT(1, type)
+    GET_OPTARG_INT(2, endian, 'l')
     switch (endian) {
     case 'l':
         switch (type) {
-        case 'c': {
-            u8 n;
-            if (!readu8(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i8)n);
-        }
-        case 'b': {
-            u8 n;
-            if (!readu8(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-        }
-        case 's': {
-            u16 n;
-            if (!readu16l(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i16)n);
-        }
-        case 'w': {
-            u16 n;
-            if (!readu16l(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-        }
-        case 'i': {
-            u32 n;
-            if (!readu32l(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i32)n);
-        }
-        case 'f': {
-            f32 n;
-            if (!readf32l(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushfloat(v, n);
-        }
+        case 'c': { i8 n;  if (  readi8(This,      n)) { RET_INT(n)   } } break;
+        case 'b': { u8 n;  if (  readi8(This,  (i8)n)) { RET_INT(n)   } } break;
+        case 's': { i16 n; if (readi16l(This,      n)) { RET_INT(n)   } } break;
+        case 'w': { u16 n; if (readi16l(This, (i16)n)) { RET_INT(n)   } } break;
+        case 'i': { i32 n; if (readi32l(This,      n)) { RET_INT(n)   } } break;
+        case 'f': { f32 n; if (readf32l(This,      n)) { RET_FLOAT(n) } } break;
         default:
-            return sq_throwerror(v, _SC("invalid parameter <type>"));
+            THROW_ERROR("Invalid type")
         }
         break;
     case 'b':
         switch (type) {
-        case 'c': {
-            u8 n;
-            if (!readu8(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i8)n);
-            return 1;
-        }
-        case 'b': {
-            u8 n;
-            if (!readu8(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-            return 1;
-        }
-        case 's': {
-            u16 n;
-            if (!readu16b(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i16)n);
-            return 1;
-        }
-        case 'w': {
-            u16 n;
-            if (!readu16b(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-            return 1;
-        }
-        case 'i': {
-            u32 n;
-            if (!readu32b(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i32)n);
-            return 1;
-        }
-        case 'f': {
-            f32 n;
-            if (!readf32b(This, n)) {
-                goto throw_read_error;
-            }
-            sq_pushfloat(v, n);
-            return 1;
-        }
+        case 'c': { i8 n;  if (  readi8(This,      n)) { RET_INT(n)   } } break;
+        case 'b': { u8 n;  if (  readi8(This,  (i8)n)) { RET_INT(n)   } } break;
+        case 's': { i16 n; if (readi16b(This,      n)) { RET_INT(n)   } } break;
+        case 'w': { u16 n; if (readi16b(This, (i16)n)) { RET_INT(n)   } } break;
+        case 'i': { i32 n; if (readi32b(This,      n)) { RET_INT(n)   } } break;
+        case 'f': { f32 n; if (readf32b(This,      n)) { RET_FLOAT(n) } } break;
         default:
-            return sq_throwerror(v, _SC("invalid parameter <type>"));
+            THROW_ERROR("Invalid type")
         }
         break;
     case 'h':
         switch (type) {
-        case 'c': {
-            u8 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i8)n);
-        }
-        case 'b': {
-            u8 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-        }
-        case 's': {
-            u16 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i16)n);
-        }
-        case 'w': {
-            u16 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, n);
-        }
-        case 'i': {
-            u32 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushinteger(v, (i32)n);
-        }
-        case 'f': {
-            f32 n;
-            if (This->read(&n, sizeof(n)) != sizeof(n)) {
-                goto throw_read_error;
-            }
-            sq_pushfloat(v, n);
-        }
+        case 'c': { i8 n;  if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_INT(n)   } } break;
+        case 'b': { u8 n;  if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_INT(n)   } } break;
+        case 's': { i16 n; if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_INT(n)   } } break;
+        case 'w': { u16 n; if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_INT(n)   } } break;
+        case 'i': { i32 n; if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_INT(n)   } } break;
+        case 'f': { f32 n; if (This->read(&n, sizeof(n)) == sizeof(n)) { RET_FLOAT(n) } } break;
         default:
-            return sq_throwerror(v, _SC("invalid parameter <type>"));
+            THROW_ERROR("Invalid type")
         }
         break;
     default:
-        return sq_throwerror(v, _SC("invalid parameter <endian>"));
+        THROW_ERROR("Invalid endian")
     }
-    return 1;
-
-throw_read_error:
-    return sq_throwerror(v, _SC("read error"));
+    THROW_ERROR("Read error")
 }
 
 //-----------------------------------------------------------------
 // Stream.readString(length)
 static SQInteger script_stream_reads(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get length
-    SQInteger length;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <length>"));
-    }
-    sq_getinteger(v, 2, &length);
+    SETUP_STREAM_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, length)
     if (length < 0) {
-        return sq_throwerror(v, _SC("invalid parameter <length>"));
+        THROW_ERROR("Invalid length")
     }
     if (length == 0) {
-        sq_pushstring(v, _SC(""), -1); // return an empty string
-        return 1;
+        RET_STRING("")
     }
-
-    // prepare a buffer
-    ArrayPtr<u8> buf = new u8[length]; // assuming sizeof(SQChar) == 1
-    assert(buf.get());
-
-    // read into the buffer
-    if (This->read(buf.get(), length) != length) {
-        return sq_throwerror(v, _SC("read error"));
+    try {
+        ArrayPtr<u8> buf = new u8[length]; // assuming sizeof(SQChar) == 1
+        if (This->read(buf.get(), length) != length) {
+            THROW_ERROR("Read error")
+        }
+        RET_STRING_N((const SQChar*)buf.get(), length)
+    } catch (const std::bad_alloc&) {
+        ReportOutOfMemory();
+        RET_NULL()
     }
-
-    sq_pushstring(v, (const SQChar*)buf.get(), length);
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Stream.writeNumber(type, number [, endian = 'l'])
 static SQInteger script_stream_writeNumber(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get type
-    SQInteger type;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    sq_getinteger(v, 2, &type);
-
-    // get optional endian
-    SQInteger endian = 'l';
-    if (sq_gettop(v) >= 4 && sq_gettype(v, 4) == OT_INTEGER) {
-        sq_getinteger(v, 4, &endian);
-    }
-
-    switch (endian) {
-    case 'l':
-        if (type == 'f') {
-            // get floating point number
-            SQFloat n;
-            if (sq_gettype(v, 3) != OT_FLOAT) {
-                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
-            }
-            sq_getfloat(v, 3, &n);
-
-            // write
-            if (!writef32l(This, (f32)n)) {
-                goto throw_write_error;
-            }
-        } else {
-            // get integer number
-            SQInteger n;
-            if (sq_gettype(v, 3) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
-            }
-            sq_getinteger(v, 3, &n);
-
-            // write
+    SETUP_STREAM_OBJECT()
+    CHECK_MIN_NARGS(2)
+    GET_ARG_INT(1, type)
+    if (ARG_IS_INT(2)) {
+        GET_ARG_INT(2, number)
+        GET_OPTARG_INT(3, endian, 'l')
+        switch (endian) {
+        case 'l':
             switch (type) {
-            case 'c': {
-                if (!writeu8(This, (u8)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'b': {
-                if (!writeu8(This, (u8)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 's': {
-                if (!writeu16l(This, (u16)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'w': {
-                if (!writeu16l(This, (u16)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'i': {
-                if (!writeu32l(This, (u32)n)) {
-                    goto throw_write_error;
-                }
-            }
+            case 'c': { if (  writei8(This,  (i8)number)) { RET_VOID() } } break;
+            case 'b': { if (  writei8(This,  (u8)number)) { RET_VOID() } } break;
+            case 's': { if (writei16l(This, (i16)number)) { RET_VOID() } } break;
+            case 'w': { if (writei16l(This, (u16)number)) { RET_VOID() } } break;
+            case 'i': { if (writei32l(This, (i32)number)) { RET_VOID() } } break;
             default:
-                return sq_throwerror(v, _SC("invalid parameter <type>"));
+                THROW_ERROR("Invalid type")
             }
-        }
-        break;
-    case 'b':
-        if (type == 'f') {
-            // get floating point number
-            SQFloat n;
-            if (sq_gettype(v, 3) != OT_FLOAT) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getfloat(v, 3, &n);
-
-            // write
-            if (!writef32b(This, (f32)n)) {
-                goto throw_write_error;
-            }
-        } else {
-            // get integer number
-            SQInteger n;
-            if (sq_gettype(v, 3) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getinteger(v, 3, &n);
-
-            // write
+        case 'b':
             switch (type) {
-            case 'c': {
-                if (!writeu8(This, (u8)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'b': {
-                if (!writeu8(This, (u8)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 's': {
-                if (!writeu16b(This, (u16)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'w': {
-                if (!writeu16b(This, (u16)n)) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'i': {
-                if (!writeu32b(This, (u32)n)) {
-                    goto throw_write_error;
-                }
-            }
+            case 'c': { if (  writei8(This,  (i8)number)) { RET_VOID() } } break;
+            case 'b': { if (  writei8(This,  (u8)number)) { RET_VOID() } } break;
+            case 's': { if (writei16b(This, (i16)number)) { RET_VOID() } } break;
+            case 'w': { if (writei16b(This, (u16)number)) { RET_VOID() } } break;
+            case 'i': { if (writei32b(This, (i32)number)) { RET_VOID() } } break;
             default:
-                return sq_throwerror(v, _SC("invalid parameter <type>"));
+                THROW_ERROR("Invalid type")
             }
-        }
-        break;
-    case 'h':
-        if (type == 'f') {
-            // get floating point number
-            SQFloat f;
-            if (sq_gettype(v, 3) != OT_FLOAT) {
-                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
-            }
-            sq_getfloat(v, 3, &f);
-
-            // write
-            f32 n = (f32)f;
-            if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                goto throw_write_error;
-            }
-        } else {
-            // get integer number
-            SQInteger i;
-            if (sq_gettype(v, 3) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <number>"));
-            }
-            sq_getinteger(v, 3, &i);
-
-            // write
+        case 'h':
             switch (type) {
-            case 'c': {
-                i8 n = (i8)i;
-                if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'b': {
-                u8 n = (u8)i;
-                if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 's': {
-                i16 n = (i16)i;
-                if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'w': {
-                u16 n = (u16)i;
-                if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                    goto throw_write_error;
-                }
-            }
-            break;
-            case 'i': {
-                i32 n = (i32)i;
-                if (This->write(&n, sizeof(n)) != sizeof(n))) {
-                    goto throw_write_error;
-                }
-            }
+            case 'c': {  i8 n =  (i8)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+            case 'b': {  u8 n =  (u8)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+            case 's': { i16 n = (i16)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+            case 'w': { u16 n = (u16)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+            case 'i': { i32 n = (i32)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
             default:
-                return sq_throwerror(v, _SC("invalid parameter <type>"));
+                THROW_ERROR("Invalid type")
             }
+        default:
+            THROW_ERROR("Invalid endian")
         }
-        break;
-    default:
-        return sq_throwerror(v, _SC("invalid parameter <endian>"));
+    } else {
+        GET_ARG_FLOAT(2, number)
+        GET_OPTARG_INT(3, endian, 'l')
+        switch (endian) {
+        case 'l': { if (writef32l(This, (f32)number)) { RET_VOID() } } break;
+        case 'b': { if (writef32b(This, (f32)number)) { RET_VOID() } } break;
+        case 'h': { f32 n = (f32)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+        default:
+            THROW_ERROR("Invalid endian")
+        }
     }
-    return 0;
-
-throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
-// Stream.writeString(string)
+// Stream.writeString(str)
 static SQInteger script_stream_writeString(HSQUIRRELVM v)
 {
-    IStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_STREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string
-    const SQChar* str = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <string>"));
-    }
-    sq_getstring(v, 2, &str);
-
-    // get string length
-    SQInteger length = sq_getsize(v, 2);  // assuming sizeof(SQChar) == 1
-    if (length > 0) {
-        if (This->write(str, length) != length) {
-            return sq_throwerror(v, _SC("write error"));
+    SETUP_STREAM_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, str)
+    int len = strlen(str); // assuming sizeof(SQChar) == 1
+    if (len > 0) {
+        if (This->write(str, len) != len) {
+            THROW_ERROR("Write error")
         }
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
@@ -1830,44 +991,45 @@ bool IsStream(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-IStream* GetStream(HSQUIRRELVM v, SQInteger idx)
+void CreateStreamDerivedClass()
+{
+    sq_pushobject(g_VM, g_StreamClass);
+    bool succeeded = SQ_SUCCEEDED(sq_newclass(g_VM, SQTrue));
+    assert(succeeded);
+}
+
+//-----------------------------------------------------------------
+void BindStream(IStream* stream)
+{
+    assert(g_StreamClass._type == OT_CLASS);
+    assert(stream);
+    sq_pushobject(g_VM, g_StreamClass); // push stream class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop stream class
+    sq_setreleasehook(g_VM, -1, script_stream_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)stream);
+    stream->grab(); // grab a new reference
+}
+
+//-----------------------------------------------------------------
+IStream* GetStream(SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_STREAM))) {
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_STREAM))) {
         return (IStream*)p;
     }
     return 0;
 }
 
-//-----------------------------------------------------------------
-bool BindStream(HSQUIRRELVM v, IStream* stream)
-{
-    if (!stream) {
-        return false;
-    }
-    sq_pushobject(v, g_stream_class); // push stream class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop stream class
-        return false;
-    }
-    sq_remove(v, -2); // pop stream class
-    sq_setreleasehook(v, -1, script_stream_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)stream);
-    stream->grab(); // grab a new reference
-    return true;
-}
-
-//-----------------------------------------------------------------
-bool CreateStreamDerivedClass(HSQUIRRELVM v)
-{
-    sq_pushobject(v, g_stream_class);
-    if (!SQ_SUCCEEDED(sq_newclass(v, SQTrue))) {
-        return false;
-    }
-    return true;
-}
 
 /***************************** BLOB *******************************/
+
+#define SETUP_BLOB_OBJECT() \
+    Blob* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Blob instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_blob_destructor(SQUserPointer p, SQInteger size)
@@ -1878,566 +1040,343 @@ static SQInteger script_blob_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Blob()
-// Blob(size)
-// Blob(string)
+// Blob([size = 0])
 static SQInteger script_blob_constructor(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Blob instances
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_BLOB_OBJECT()
+    GET_OPTARG_INT(1, size, 0)
+    if (size < 0) {
+        THROW_ERROR("Invalid size")
     }
-    assert(!This);
-
-    BlobPtr blob = Blob::Create();
-    if (!blob) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    if (sq_gettop(v) >= 2) {
-        if (sq_gettype(v, 2) == OT_INTEGER) {
-            SQInteger size;
-            sq_getinteger(v, 2, &size);
-            if (size < 0) {
-                return sq_throwerror(v, _SC("invalid parameter <size>"));
-            }
-            if (!blob->resize(size)) {
-                return sq_throwerror(v, _SC("out of memory"));
-            }
-        } else if (sq_gettype(v, 2) == OT_STRING) {
-            SQInteger str_size = sq_getsize(v, 2);
-            if (str_size > 0) {
-                const SQChar* str = 0;
-                sq_getstring(v, 2, &str);
-                if (!blob->assign(str, str_size)) { // assuming sizeof(SQChar) == 1
-                    return sq_throwerror(v, _SC("out of memory"));
-                }
-            }
-        } else {
-            return sq_throwerror(v, _SC("invalid type of initialization parameter"));
-        }
-    }
-
-    sq_setinstanceup(v, 1, (SQUserPointer)blob.release());
+    This = Blob::Create(size);
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_blob_destructor);
-    return 0;
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Blob.FromString(string)
+static SQInteger script_blob_FromString(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, string)
+    BlobPtr blob = Blob::Create();
+    int len = strlen(string);
+    if (len > 0) {
+        blob->assign(str, len);
+    }
+    RET_BLOB(blob.release())
 }
 
 //-----------------------------------------------------------------
 // Blob.getSize()
 static SQInteger script_blob_getSize(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getSize());
-    return 1;
+    SETUP_BLOB_OBJECT()
+    RET_INT(This->getSize())
 }
 
 //-----------------------------------------------------------------
 // Blob.getCapacity()
 static SQInteger script_blob_getCapacity(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getCapacity());
-    return 1;
+    SETUP_BLOB_OBJECT()
+    RET_INT(This->getCapacity())
 }
 
 //-----------------------------------------------------------------
 // Blob.clear()
 static SQInteger script_blob_clear(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_BLOB_OBJECT()
     This->clear();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.reset([value])
 static SQInteger script_blob_reset(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get optional value
-    SQInteger value = 0;
-    if (sq_gettop(v) >= 2) {
-        if (sq_gettype(v, 2) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getinteger(v, 2, &value);
-    }
-
+    SETUP_BLOB_OBJECT()
+    GET_OPTARG_INT(1, value, 0)
     This->reset((u8)value);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.resize(size)
 static SQInteger script_blob_resize(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get size
-    SQInteger size;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <size>"));
-    }
-    sq_getinteger(v, 2, &size);
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, size)
     if (size < 0) {
-        return sq_throwerror(v, _SC("invalid parameter <size>"));
+        THROW_ERROR("Invalid size")
     }
-
     This->resize(size);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.bloat()
 static SQInteger script_blob_bloat(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_BLOB_OBJECT()
     This->bloat();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.reserve(size)
 static SQInteger script_blob_reserve(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, size)
+    if (size < 0) {
+        THROW_ERROR("Invalid size")
     }
-    assert(This);
-
-    if (!This->reserve(size)) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-    return 0;
+    This->reserve(size);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.doubleCapacity()
 static SQInteger script_blob_doubleCapacity(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    if (!This->doubleCapacity()) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-    return 0;
+    SETUP_BLOB_OBJECT()
+    This->doubleCapacity();
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.assign(blob)
 static SQInteger script_blob_assign(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
-
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, blob)
     if (blob->getSize() > 0) {
         This->assign(blob->getBuffer(), blob->getSize());
     } else {
         This->clear();
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.append(blob)
 static SQInteger script_blob_append(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
-
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, blob)
     if (blob->getSize() > 0) {
         This->append(blob->getBuffer(), blob->getSize());
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob.concat(blob)
 static SQInteger script_blob_concat(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
-
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, blob)
     BlobPtr result = This->concat(blob->getBuffer(), blob->getSize());
-    if (!result || !BindBlob(v, result.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(result.get())
 }
 
 //-----------------------------------------------------------------
 // Blob._add(blob)
 static SQInteger script_blob__add(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of rhs parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
-
-    // concat and return
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, blob)
     BlobPtr new_blob = This->concat(blob->getBuffer(), blob->getSize());
-    if (!new_blob || !BindBlob(v, new_blob.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(new_blob.get())
 }
 
 //-----------------------------------------------------------------
 // Blob._get(index)
 static SQInteger script_blob__get(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_INTEGER: { // integer index access
-        // get integer index
-        SQInteger index;
-        sq_getinteger(v, 2, &index);
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    if (ARG_IS_INT(1)) {
+        GET_ARG_INT(1, index)
         if (index < 0 || index >= This->getSize()) {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
-
-        sq_pushinteger(v, This->at(index));
-        return 1;
-    }
-    break;
-    case OT_STRING: { // string index access
-        // get string index
-        const SQChar* index = 0;
-        sq_getstring(v, 2, &index);
-
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("size")) == 0) {
-            sq_pushinteger(v, This->getSize());
-        } else if (scstrcmp(index, _SC("capacity")) == 0) {
-            sq_pushinteger(v, This->getCapacity());
+        RET_INT(This->at(index))
+    } else {
+        GET_ARG_STRING(1, index)
+        if (strcmp(index, "size") == 0) {
+            RET_INT(This->getSize())
+        } else if (strcmp(index, "capacity") == 0) {
+            RET_INT(This->getCapacity())
         } else {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
     }
-    break;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Blob._set(index, value)
 static SQInteger script_blob__set(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_INTEGER: { // integer index access
-        // get integer index
-        SQInteger index;
-        sq_getinteger(v, 2, &index);
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(2)
+    if (ARG_IS_INT(1)) {
+        GET_ARG_INT(1, index)
         if (index < 0 || index >= This->getSize()) {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
-
-        // get value
-        SQInteger value;
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getinteger(v, 3, &value);
-
+        GET_ARG_INT(2, value)
         This->at(index) = (u8)value;
-    }
-    break;
-    case OT_STRING: { // string index access
-        // get string index
-        const SQChar* index = 0;
-        sq_getstring(v, 2, &index);
-
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("size")) == 0) {
-            // get value (the new size)
-            SQInteger value;
-            if (sq_gettype(v, 3) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <value>"));
+    } else {
+        GET_ARG_STRING(1, index)
+        if (strcmp(index, "size") == 0) {
+            GET_ARG_INT(2, value)
+            if (value < 0) { // negative size
+                THROW_ERROR("Invalid size");
             }
-            sq_getinteger(v, 3, &value);
-            if (value < 0) { // negative size is not allowed
-                return sq_throwerror(v, _SC("invalid parameter <value>"));
-            }
-
-            if (!This->resize(value)) {
-                return sq_throwerror(v, _SC("out of memory"));
-            }
+            This->resize(value);
         } else {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
     }
-    break;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Blob._typeof()
 static SQInteger script_blob__typeof(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Blob"), -1);
-    return 1;
+    SETUP_BLOB_OBJECT()
+    RET_STRING("Blob")
 }
 
 //-----------------------------------------------------------------
 // Blob._tostring()
 static SQInteger script_blob__tostring(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_BLOB_OBJECT()
     std::ostringstream oss;
-    oss << "<Blob instance (" << This->getSize() << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<Blob instance at " << This;
+    oss << " (size = " << This->getSize();
+    oss << ", capacity = " << This->getCapacity();
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
 // Blob._nexti(index)
 static SQInteger script_blob__nexti(HSQUIRRELVM v)
 {
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_NULL: // start of iteration
-        // return index 0
-        sq_pushinteger(v, 0);
-        return 1;
-    case OT_INTEGER:
-        // get previous index
-        SQInteger prev_index;
-        sq_getinteger(v, 2, &prev_index);
-
-        if (previdx + 1 < This->getSize()) {
-            sq_pushinteger(v, prev_index + 1); // return next index
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    if (ARG_IS_NULL(1)) { // start of iteration
+        RET_INT(0) // return index 0
+    } else {
+        GET_ARG_INT(1, prev_idx)
+        int next_idx = prev_idx + 1;
+        if (next_idx >= 0 && next_idx < This->getSize()) {
+            RET_INT(next_idx) // return next index
         } else {
-            sq_pushnull(v); // end of iteration
+            RET_NULL() // end of iteration
         }
-        return 1;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
     }
 }
 
 //-----------------------------------------------------------------
-// Blob._cloned(blob)
+// Blob._cloned(original)
 static SQInteger script_blob__cloned(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Blob instances
-    Blob* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_BLOB)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get original blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* orig = GetBlob(v, 2);
-    assert(orig);
-
-    // clone blob
-    This = Blob::Create(orig->getSize());
-    if (!This) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-    if (orig->getSize() > 0) {
-        memcpy(This->getBuffer(), orig->getBuffer(), orig->getSize());
+    SETUP_BLOB_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, original)
+    This = Blob::Create(original->getSize());
+    if (original->getSize() > 0) {
+        memcpy(This->getBuffer(), original->getBuffer(), original->getSize());
     }
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_blob_destructor);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Blob._dump(blob, stream)
+// Blob._dump(instance, stream)
 static SQInteger script_blob__dump(HSQUIRRELVM v)
 {
-    // get blob
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blob>"));
-    }
-    Blob* blob = GetBlob(v, 2);
-    assert(blob);
+    CHECK_NARGS(2)
+    GET_ARG_BLOB(1, instance)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
     if (!stream->isOpen() || !stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid output stream")
     }
 
     // write class name
     const char* class_name = "Blob";
     int num_bytes = strlen(class_name);
-    if (!writeu32l(stream, num_bytes) || stream->write(class_name, num_bytes) != num_bytes) {
+    if (!writei32l(stream, (i32)num_bytes) || stream->write(class_name, num_bytes) != num_bytes) {
         goto throw_write_error;
     }
 
-    // write blob
-    if (!writeu32l(stream, (u32)blob->getSize())) {
+    // write blob size
+    if (!writei32l(stream, (i32)instance->getSize())) {
         goto throw_write_error;
     }
-    if (blob->getSize() > 0 && stream->write(blob->getBuffer(), blob->getSize()) != blob->getSize()) {
+
+    // write blob data
+    if (instance->getSize() > 0 && stream->write(instance->getBuffer(), instance->getSize()) != instance->getSize()) {
         goto throw_write_error;
     }
-    return 0;
+
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // Blob._load(stream)
 static SQInteger script_blob__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
     // read blob size
     u32 blob_size;
-    if (!readu32l(stream, blob_size)) {
+    if (!readi32l(stream, (i32)blob_size)) {
         goto throw_read_error;
     }
 
-    BlobPtr blob = Blob::Create(blob_size);
-    if (!blob) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    // read blob
-    if (stream->read(blob->getBuffer(), blob_size) != blob_size) {
+    // read blob data
+    BlobPtr instance = Blob::Create(blob_size);
+    if (stream->read(instance->getBuffer(), blob_size) != blob_size) {
         goto throw_read_error;
     }
 
-    if (!BindBlob(v, blob.get()) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(blob.get())
 
 throw_read_error:
-    return sq_throwerror(v, _SC("read error"));
+    THROW_ERROR("Read error")
 }
 
 //-----------------------------------------------------------------
@@ -2452,31 +1391,27 @@ bool IsBlob(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-Blob* GetBlob(HSQUIRRELVM v, SQInteger idx)
+void BindBlob(Blob* blob)
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_BLOB))) {
-        return (Blob*)p;
-    }
-    return 0;
+    assert(g_BlobClass._type == OT_CLASS);
+    assert(blob);
+    sq_pushobject(g_VM, g_BlobClass); // push blob class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop blob class
+    sq_setreleasehook(g_VM, -1, script_blob_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)blob);
+    blob->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-bool BindBlob(HSQUIRRELVM v, Blob* blob)
+Blob* GetBlob(SQInteger idx)
 {
-    if (!blob) {
-        return false;
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_BLOB))) {
+        return (Blob*)p;
     }
-    sq_pushobject(v, g_blob_class); // push blob class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop blob class
-        return false;
-    }
-    sq_remove(v, -2); // pop blob class
-    sq_setreleasehook(v, -1, script_blob_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)blob);
-    blob->grab(); // grab a new reference
-    return true;
+    return 0;
 }
 
 /******************************************************************
@@ -2485,286 +1420,65 @@ bool BindBlob(HSQUIRRELVM v, Blob* blob)
  *                                                                *
  ******************************************************************/
 
-/***************************** RGBA *******************************/
+/***************************** COLOR ******************************/
 
 //-----------------------------------------------------------------
-// RGBA(red, green, blue [, alpha = 255])
-static SQInteger script_rgba_constructor(HSQUIRRELVM v)
+// Color(red, green, blue [, alpha = 255])
+static SQInteger script_color_constructor(HSQUIRRELVM v)
 {
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get red
-    SQInteger red;
-    if (sq_gettype(v, 2) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <red>"));
-    }
-    sq_getinteger(v, 2, &red);
-
-    // get green
-    SQInteger green;
-    if (sq_gettype(v, 3) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <green>"));
-    }
-    sq_getinteger(v, 3, &green);
-
-    // get blue
-    SQInteger blue;
-    if (sq_gettype(v, 4) & SQOBJECT_NUMERIC == 0) {
-        return sq_throwerror(v, _SC("invalid type of parameter <blue>"));
-    }
-    sq_getinteger(v, 4, &blue);
-
-    // get optional alpha
-    SQInteger alpha = 255;
-    if (sq_gettop(v) >= 5) {
-        if (sq_gettype(v, 5) & SQOBJECT_NUMERIC == 0) {
-            return sq_throwerror(v, _SC("invalid type of parameter <alpha>"));
-        }
-        sq_getinteger(v, 5, &alpha);
-    }
-
-    new (This) RGBA(red, green, blue, alpha);
-    return 0;
+    CHECK_MIN_NARGS(3)
+    GET_ARG_INT(1, red)
+    GET_ARG_INT(2, green)
+    GET_ARG_INT(3, blue)
+    GET_OPTARG_INT(4, alpha, 255)
+    RET_INT(RGBA::Pack(red, green, blue, alpha))
 }
 
 //-----------------------------------------------------------------
-// RGBA._get(index)
-static SQInteger script_rgba__get(HSQUIRRELVM v)
+// Color.Red(color)
+static SQInteger script_color_Red(HSQUIRRELVM v)
 {
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("red")) == 0) {
-        sq_pushinteger(v, This->red);
-    } else if (scstrcmp(index, _SC("green")) == 0) {
-        sq_pushinteger(v, This->green);
-    } else if (scstrcmp(index, _SC("blue")) == 0) {
-        sq_pushinteger(v, This->blue);
-    } else if (scstrcmp(index, _SC("alpha")) == 0) {
-        sq_pushinteger(v, This->alpha);
-    } else {
-        // index not found
-        sq_pushnull(v);
-        return sq_throwobject(v);
-    }
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).red)
 }
 
 //-----------------------------------------------------------------
-// RGBA._set(index, value)
-static SQInteger script_rgba__set(HSQUIRRELVM v)
+// Color.Green(color)
+static SQInteger script_color_Green(HSQUIRRELVM v)
 {
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // get value
-    SQInteger value;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-    }
-    sq_getinteger(v, 3, &value);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("red")) == 0) {
-        This->red = (u8)value;
-    } else if (scstrcmp(index, _SC("green")) == 0) {
-        This->green = (u8)value;
-    } else if (scstrcmp(index, _SC("blue")) == 0) {
-        This->blue = (u8)value;
-    } else if (scstrcmp(index, _SC("alpha")) == 0) {
-        This->alpha = (u8)value;
-    } else {
-        // index not found
-        sq_pushnull(v);
-        return sq_throwobject(v);
-    }
-    return 0;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).green)
 }
 
 //-----------------------------------------------------------------
-// RGBA._typeof()
-static SQInteger script_rgba__typeof(HSQUIRRELVM v)
+// Color.Blue(color)
+static SQInteger script_color_Blue(HSQUIRRELVM v)
 {
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("RGBA"), -1);
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).blue)
 }
 
 //-----------------------------------------------------------------
-// RGBA._cloned(rgba)
-static SQInteger script_rgba__cloned(HSQUIRRELVM v)
+// Color.Alpha(color)
+static SQInteger script_color_Alpha(HSQUIRRELVM v)
 {
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get original rgba
-    if (!IsRGBA(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rgba>"));
-    }
-    RGBA* orig = GetRGBA(v, 2);
-    assert(orig);
-
-    // clone rgba
-    new (This) RGBA(*orig);
-    return 0;
-}
-
-//-----------------------------------------------------------------
-// RGBA._tostring()
-static SQInteger script_rgba__tostring(HSQUIRRELVM v)
-{
-    RGBA* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_RGBA))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    std::ostringstream oss;
-    oss << "<RGBA instance (" << (int)This->red;
-    oss <<    ", " << (int)This->green;
-    oss <<    ", " << (int)This->blue;
-    oss <<    ", " << (int)This->alpha;
-    oss << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// RGBA._dump(rgba, stream)
-static SQInteger script_rgba__dump(HSQUIRRELVM v)
-{
-    // get rgba
-    if (!IsRGBA(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <rgba>"));
-    }
-    RGBA* rgba = GetRGBA(v, 2);
-    assert(rgba);
-
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
-    if (!stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
-    }
-
-    // write class name
-    const char* class_name = "RGBA";
-    int class_name_size = strlen(class_name);
-    if (!writeu32l(stream, class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
-        goto throw_write_error;
-    }
-
-    // write rgba
-    if (stream->write(rgba, sizeof(RGBA)) != sizeof(RGBA)) {
-        goto throw_write_error;
-    }
-    return 0;
-
-throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
-}
-
-//-----------------------------------------------------------------
-// RGBA._load(stream)
-static SQInteger script_rgba__load(HSQUIRRELVM v)
-{
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
-    if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
-    }
-
-    // read rgba
-    RGBA rgba;
-    if (stream->read(&rgba, sizeof(RGBA)) != sizeof(RGBA)) {
-        return sq_throwerror(v, _SC("read error"));
-    }
-
-    if (!BindRGBA(v, rgba) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
-}
-
-//-----------------------------------------------------------------
-bool IsRGBA(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_RGBA;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
-RGBA* GetRGBA(HSQUIRRELVM v, SQInteger idx)
-{
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_RGBA))) {
-        return (RGBA*)p;
-    }
-    return 0;
-}
-
-//-----------------------------------------------------------------
-bool BindRGBA(HSQUIRRELVM v, const RGBA& col)
-{
-    sq_pushobject(v, g_rgba_class); // push rgba class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop rgba class
-        return false;
-    }
-    sq_remove(v, -2); // pop rgba class
-    SQUserPointer p = 0;
-    sq_getinstanceup(v, -1, &p, 0);
-    assert(p);
-    new (p) RGBA(col);
-    return true;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).alpha)
 }
 
 /**************************** CANVAS *****************************/
 
+#define SETUP_CANVAS_OBJECT() \
+    Canvas* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Canvas instance") \
+    }
+
+//-----------------------------------------------------------------
 static SQInteger script_canvas_destructor(SQUserPointer p, SQInteger size)
 {
     assert(p);
@@ -2776,334 +1490,209 @@ static SQInteger script_canvas_destructor(SQUserPointer p, SQInteger size)
 // Canvas(width, height [, pixels])
 static SQInteger script_canvas_constructor(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Blob instances
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get width
-    SQInteger width;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
-    }
-    sq_getinteger(v, 2, &width);
+    SETUP_CANVAS_OBJECT()
+    CHECK_MIN_NARGS(2)
+    GET_ARG_INT(1, width)
+    GET_ARG_INT(2, height)
+    GET_OPTARG_BLOB(3, pixels)
     if (width <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <width>"));
+        THROW_ERROR("Invalid width")
     }
-
-    // get height
-    SQInteger height;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
-    }
-    sq_getinteger(v, 3, &height);
     if (height <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <height>"));
+        THROW_ERROR("Invalid height")
     }
-
-    // get optional pixels
-    Blob* pixels = 0;
-    if (sq_gettop(v) >= 4) {
-        if (!IsBlob(v, 4)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <pixels>"));
-        }
-        pixels = GetBlob(v, 4);
-        assert(pixels);
-        if (pixels->getSize() != width * height * Canvas::GetNumBytesPerPixel()) {
-            return sq_throwerror(v, _SC("invalid parameter <pixels>"));
-        }
+    if (pixels && pixels->getSize() != width * height * Canvas::GetNumBytesPerPixel()) {
+        THROW_ERROR("Invalid pixels")
     }
-
     This = Canvas::Create(width, height);
-    if (!This) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
     if (pixels) {
         memcpy(This->getPixels(), pixels->getBuffer(), pixels->getSize());
     }
-
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_canvas_destructor);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Canvas.load(filename)
-static SQInteger script_canvas_load(HSQUIRRELVM v)
+// Canvas.Load(filename)
+static SQInteger script_canvas_Load(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    FilePtr file = OpenFile(filename);
+    if (!file) {
+        THROW_ERROR("Could not open file")
     }
-    assert(This);
-
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
+    CanvasPtr image = LoadImage(file.get())
+    if (!image) {
+        THROW_ERROR("Could not load image")
     }
-    sq_getstring(v, 2, &filename);
+    RET_CANVAS(image.get())
+}
 
-    sq_pushbool(v, This->load(filename));
-    return 1;
+//-----------------------------------------------------------------
+// Canvas.LoadFromStream(stream)
+static SQInteger script_canvas_LoadFromStream(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+    if (!stream->isOpen() || !stream->isReadable()) {
+        THROW_ERROR("Invalid stream")
+    }
+    CanvasPtr image = LoadImage(stream)
+    if (!image) {
+        THROW_ERROR("Could not load image")
+    }
+    RET_CANVAS(image.get())
 }
 
 //-----------------------------------------------------------------
 // Canvas.save(filename)
 static SQInteger script_canvas_save(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    FilePtr file = OpenFile(filename, IFile::OUT);
+    if (!file) {
+        THROW_ERROR("Could not open file")
     }
-    assert(This);
-
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
+    if (!SaveImage(image, file.get())) {
+        THROW_ERROR("Could not save image")
     }
-    sq_getstring(v, 2, &filename);
+    RET_VOID()
+}
 
-    sq_pushbool(v, This->save(filename));
-    return 1;
+//-----------------------------------------------------------------
+// Canvas.saveToStream(stream)
+static SQInteger script_canvas_saveToStream(HSQUIRRELVM v)
+{
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+    if (!stream->isOpen() || !stream->isReadable()) {
+        THROW_ERROR("Invalid stream")
+    }
+    if (!SaveImage(image, stream)) {
+        THROW_ERROR("Could not save image")
+    }
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Canvas.getPixels()
 static SQInteger script_canvas_getPixels(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_CANVAS_OBJECT()
     BlobPtr pixels = Blob::Create(This->getNumPixels() * Canvas::GetNumBytesPerPixel());
-    if (!pixels) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    // copy pixels
     memcpy(pixels->getBuffer(), This->getPixels(), pixels->getSize());
-
-    if (!BindBlob(v, blob.get()) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(pixels.get())
 }
 
 //-----------------------------------------------------------------
 // Canvas.cloneSection(section)
 static SQInteger script_canvas_cloneSection(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get section
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <section>"));
-    }
-    Recti* section = GetRect(v, 2);
-    assert(section);
-
-    // clone
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, section)
     CanvasPtr canvas = This->cloneSection(*section);
     if (!canvas) {
-        return sq_throwerror(v, _SC("failed to clone section"));
+        THROW_ERROR("Could not clone section")
     }
-
-    if (!BindCanvas(v, canvas.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_CANVAS(canvas.get())
 }
 
 //-----------------------------------------------------------------
 // Canvas.getPixel(x, y)
 static SQInteger script_canvas_getPixel(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get x
-    SQInteger x;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <x>"));
-    }
-    sq_getinteger(v, 2, &x);
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
     if (x < 0 || x >= This->getWidth()) {
-        return sq_throwerror(v, _SC("invalid parameter <x>"));
+        THROW_ERROR("Invalid x")
     }
-
-    // get y
-    SQInteger y;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <y>"));
-    }
-    sq_getinteger(v, 3, &y);
     if (y < 0 || y >= This->getHeight()) {
-        return sq_throwerror(v, _SC("invalid parameter <y>"));
+        THROW_ERROR("Invalid y")
     }
-
-    if (!BindRGBA(v, This->getPixel(x, y))) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_INT(RGBA::Pack(This->getPixel(x, y)))
 }
 
 //-----------------------------------------------------------------
 // Canvas.setPixel(x, y, color)
 static SQInteger script_canvas_setPixel(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get x
-    SQInteger x;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <x>"));
-    }
-    sq_getinteger(v, 2, &x);
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    GET_ARG_INT(3, color)
     if (x < 0 || x >= This->getWidth()) {
-        return sq_throwerror(v, _SC("invalid parameter <x>"));
+        THROW_ERROR("Invalid x")
     }
-
-    // get y
-    SQInteger y;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <y>"));
-    }
-    sq_getinteger(v, 3, &y);
     if (y < 0 || y >= This->getHeight()) {
-        return sq_throwerror(v, _SC("invalid parameter <y>"));
+        THROW_ERROR("Invalid y")
     }
-
-    // get color
-    if (!IsRGBA(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <color>"));
-    }
-    RGBA* color = GetRGBA(v, 4);
-    assert(color);
-
-    This->setPixel(x, y, *color);
-    return 0;
+    This->setPixel(x, y, RGBA::Unpack((u32)color));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Canvas.resize(width, height)
 static SQInteger script_canvas_resize(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get width
-    SQInteger width;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
-    }
-    sq_getinteger(v, 2, &width);
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, width)
+    GET_ARG_INT(2, height)
     if (width <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <width>"));
+        THROW_ERROR("Invalid width")
     }
-
-    // get height
-    SQInteger height;
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
-    }
-    sq_getinteger(v, 3, &height);
     if (height <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <height>"));
+        THROW_ERROR("Invalid height")
     }
-
-    sq_pushbool(This->resize(width, height));
-    return 1;
+    This->resize(width, height)
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Canvas.fill(color)
 static SQInteger script_canvas_fill(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get color
-    if (!IsRGBA(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <color>"));
-    }
-    RGBA* color = GetRGBA(v, 2);
-    assert(color);
-
-    This->fill(*color);
-    return 0;
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    This->fill(RGBA::Unpack((u32)color));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Canvas._get(index)
 static SQInteger script_canvas__get(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_INTEGER: { // integer index access
-        // get integer index
-        SQInteger index;
-        sq_getinteger(v, 2, &index);
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    if (ARG_IS_INT(1)) {
+        GET_ARG_INT(1, index)
         if (index < 0 || index >= This->getNumPixels()) {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
-
-        if (!BindRGBA(v, This->getPixelByIndex(index))) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-        return 1;
-    }
-    break;
-    case OT_STRING: { // string index access
-        // get string index
-        const SQChar* index = 0;
-        sq_getstring(v, 2, &index);
-
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("width")) == 0) {
-            sq_pushinteger(v, This->getWidth());
-        } else if (scstrcmp(index, _SC("height")) == 0) {
-            sq_pushinteger(v, This->getHeight());
+        RET_INT(RGBA::Pack(This->getPixelByIndex(index)))
+    } else {
+        GET_ARG_STRING(1, index)
+        if (strcmp(index, "width") == 0) {
+            RET_INT(This->getWidth())
+        } else if (strcmp(index, "height") == 0) {
+            RET_INT(This->getHeight())
         } else {
             // index not found
             sq_pushnull(v);
             return sq_throwobject(v);
         }
-        return 1;
-    }
-    break;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
     }
 }
 
@@ -3111,215 +1700,145 @@ static SQInteger script_canvas__get(HSQUIRRELVM v)
 // Canvas._set(index, value)
 static SQInteger script_canvas__set(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, index)
+    GET_ARG_INT(2, value)
+    if (index < 0 || index >= This->getNumPixels()) {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
     }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_INTEGER: { // integer index access
-        // get integer index
-        SQInteger index;
-        sq_getinteger(v, 2, &index);
-        if (index < 0 || index >= This->getNumPixels()) {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-
-        // get value (pixel color)
-        if (!IsRGBA(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        RGBA* color = GetRGBA(v, 3);
-        assert(color);
-
-        This->setPixelByIndex(index, *color);
-    }
-    break;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    return 0;
+    This->setPixelByIndex(index, RGBA::Unpack((u32)value));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Canvas._typeof()
 static SQInteger script_canvas__typeof(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Canvas"), -1);
-    return 1;
+    SETUP_CANVAS_OBJECT()
+    RET_STRING("Canvas")
 }
 
 //-----------------------------------------------------------------
 // Canvas._tostring()
 static SQInteger script_canvas__tostring(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_CANVAS_OBJECT()
     std::ostringstream oss;
-    oss << "<Canvas instance (" << This->getWidth() << ", " << This->getHeight() << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<Canvas instance at " << This;
+    oss << " (width = " << This->getWidth();
+    oss << ", height = " << This->getHeight();
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
 // Canvas._nexti(index)
 static SQInteger script_canvas__nexti(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    switch (sq_gettype(v, 2)) {
-    case OT_NULL: // start of iteration
-        // return index 0
-        sq_pushinteger(v, 0);
-        return 1;
-    case OT_INTEGER:
-        // get previous index
-        SQInteger prev_index;
-        sq_getinteger(v, 2, &prev_index);
-
-        if (previdx + 1 < This->getNumPixels()) {
-            sq_pushinteger(v, prev_index + 1); // return next index
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    if (ARG_IS_NULL(1)) { // start of iteration
+        RET_INT(0) // return index 0
+    } else {
+        GET_ARG_INT(1, prev_idx)
+        int next_idx = prev_idx + 1;
+        if (next_idx >= 0 && next_idx < This->getNumPixels()) {
+            RET_INT(next_idx) // return next index
         } else {
-            sq_pushnull(v); // end of iteration
+            RET_NULL() // end of iteration
         }
-        return 1;
-    default:
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
     }
 }
 
 //-----------------------------------------------------------------
-// Canvas._cloned(canvas)
+// Canvas._cloned(original)
 static SQInteger script_canvas__cloned(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Blob instances
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CANVAS)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get original canvas
-    if (!IsCanvas(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <canvas>"));
-    }
-    Canvas* orig = GetCanvas(v, 2);
-    assert(orig);
-
-    // clone canvas
-    This = Canvas::Create(orig->getPixels(), orig->getWidth(), orig->getHeight());
-    if (!This) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_CANVAS(1, original)
+    This = Canvas::Create(original->getPixels(), original->getWidth(), original->getHeight());
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_canvas_destructor);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Canvas._dump(canvas, stream)
+// Canvas._dump(instance, stream)
 static SQInteger script_canvas__dump(HSQUIRRELVM v)
 {
-    // get canvas
-    if (!IsCanvas(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <canvas>"));
-    }
-    Canvas* canvas = GetCanvas(v, 2);
-    assert(canvas);
+    CHECK_NARGS(2)
+    GET_ARG_CANVAS(1, instance)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
     if (!stream->isOpen() || !stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid output stream")
     }
 
     // write class name
     const char* class_name = "Canvas";
     int class_name_size = strlen(class_name);
-    if (!writeu32l(stream, class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
+    if (!writei32l(stream, (i32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
         goto throw_write_error;
     }
 
-    // write canvas dimensions
-    if (!writeu32l(stream, (u32)canvas->getWidth()) || !writeu32l(stream, (u32)canvas->getHeight()) {
+    // write dimensions
+    if (!writei32l(stream, (i32)instance->getWidth()) ||
+        !writei32l(stream, (i32)instance->getHeight())
+    {
         goto throw_write_error;
     }
 
-    // write canvas pixels
-    int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
-    if (stream->write(canvas->getPixels(), pixels_size) != pixels_size) {
+    // write pixels
+    int pixels_size = instance->getNumPixels() * Canvas::GetNumBytesPerPixel();
+    if (stream->write(instance->getPixels(), pixels_size) != pixels_size) {
         goto throw_write_error;
     }
-    return 0;
+
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // Canvas._load(stream)
 static SQInteger script_canvas__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
-    // read canvas dimensions
+    // read dimensions
     u32 width;
     u32 height;
-    if (!readu32l(stream, width) || !readu32l(stream, height)) {
+    if (!readi32l(stream, (i32)width) ||
+        !readi32l(stream, (i32)height))
+    {
         goto throw_read_error;
     }
     if (width * height <= 0) {
-        return sq_throwerror(v, _SC("invalid dimensions"));
+        THROW_ERROR("Invalid dimensions")
     }
 
-    // create canvas
-    CanvasPtr canvas = Canvas::Create(width, height);
-    if (!canvas) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
+    CanvasPtr instance = Canvas::Create(width, height);
 
-    // read canvas pixels
+    // read pixels
     int pixels_size = width * height * Canvas::GetNumBytesPerPixel();
-    if (stream->read(canvas->getPixels(), pixels_size) != pixels_size) {
+    if (stream->read(instance->getPixels(), pixels_size) != pixels_size) {
         goto throw_read_error;
     }
 
-    if (!BindCanvas(v, canvas.get()) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_CANVAS(instance.get())
 
 throw_read_error:
-    return sq_throwerror(v, _SC("read error"));
+    THROW_ERROR("Read error")
 }
 
 //-----------------------------------------------------------------
@@ -3334,31 +1853,27 @@ bool IsCanvas(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-Canvas* GetCanvas(HSQUIRRELVM v, SQInteger idx)
+void BindCanvas(Canvas* canvas)
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_CANVAS))) {
-        return (Canvas*)p;
-    }
-    return 0;
+    assert(g_CanvasClass._type == OT_CLASS);
+    assert(canvas);
+    sq_pushobject(g_VM, g_CanvasClass); // push canvas class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop canvas class
+    sq_setreleasehook(g_VM, -1, script_canvas_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)canvas);
+    canvas->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-bool BindCanvas(HSQUIRRELVM v, Canvas* canvas)
+Canvas* GetCanvas(SQInteger idx)
 {
-    if (!canvas) {
-        return false;
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_CANVAS))) {
+        return (Canvas*)p;
     }
-    sq_pushobject(v, g_canvas_class); // push canvas class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop canvas class
-        return false;
-    }
-    sq_remove(v, -2); // pop canvas class
-    sq_setreleasehook(v, -1, script_canvas_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)canvas);
-    canvas->grab(); // grab a new reference
-    return true;
+    return 0;
 }
 
 /******************************************************************
@@ -3373,197 +1888,105 @@ bool BindCanvas(HSQUIRRELVM v, Canvas* canvas)
 // OpenFile(filename [, mode = File.IN])
 static SQInteger script_OpenFile(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    GET_OPTARG_INT(2, mode, IFile::IN)
+    if (mode != IFile::IN  &&
+        mode != IFile::OUT &&
+        mode != IFile::APPEND)
+    {
+        THROW_ERROR("Invalid mode")
     }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    // get optional mode
-    SQInteger mode = IFile::IN;
-    if (sq_gettop(v) >= 3) {
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <mode>"));
-        }
-        sq_getinteger(v, 3, &mode);
-        if (mode != IFile::IN &&
-            mode != IFile::OUT &&
-            mode != IFile::APPEND) {
-            return sq_throwerror(v, _SC("invalid parameter <mode>"));
-        }
-    }
-
-    // open
-    IFile* file = OpenFile(filename, mode);
+    FilePtr file = OpenFile(filename, mode);
     if (!file) {
-        return sq_throwerror(v, _SC("failed to open file"));
+        THROW_ERROR("Could not open file")
     }
-
-    if (!BindFile(v, file)) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_FILE(file.get())
 }
 
 //-----------------------------------------------------------------
-// Exists(filename)
+// DoesFileExist(filename)
 static SQInteger script_Exists(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
-    }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    sq_pushbool(v, Exists(filename));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(DoesFileExist(filename))
 }
 
 //-----------------------------------------------------------------
 // IsRegularFile(filename)
 static SQInteger script_IsRegularFile(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
-    }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    sq_pushbool(v, IsRegularFile(filename));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsRegularFile(filename))
 }
 
 //-----------------------------------------------------------------
 // IsDirectory(filename)
 static SQInteger script_IsDirectory(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
-    }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    sq_pushbool(v, IsDirectory(filename));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsDirectory(filename))
 }
 
 //-----------------------------------------------------------------
-// GetLastWriteTime(filename)
+// GetFileModTime(filename)
 static SQInteger script_GetLastWriteTime(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
-    }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    sq_pushinteger(v, GetLastWriteTime(filename));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_INT(GetFileModTime(filename))
 }
 
 //-----------------------------------------------------------------
 // CreateDirectory(directory)
 static SQInteger script_CreateDirectory(HSQUIRRELVM v)
 {
-    // get directory
-    const SQChar* directory = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <directory>"));
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
+    if (!CreateDirectory(directory)) {
+        THROW_ERROR("Could not create directory")
     }
-    sq_getstring(v, 2, &directory);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <directory>"));
-    }
-
-    sq_pushbool(v, CreateDirectory(filename));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Remove(filename)
+// RemoveFile(filename)
 static SQInteger script_Remove(HSQUIRRELVM v)
 {
-    // get filename
-    const SQChar* filename = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filename>"));
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    if (!RemoveFile(filename)) {
+        THROW_ERROR("Could not remove file or directory")
     }
-    sq_getstring(v, 2, &filename);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filename>"));
-    }
-
-    sq_pushbool(v, Remove(filename));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// Rename(filenameFrom, filenameTo)
+// RenameFile(filenameFrom, filenameTo)
 static SQInteger script_Rename(HSQUIRRELVM v)
 {
-    // get filenameFrom
-    const SQChar* filenameFrom = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filenameFrom>"));
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, from)
+    GET_ARG_STRING(2, to)
+    if (!RenameFile(filenameFrom, filenameTo)) {
+        THROW_ERROR("Could not rename file or directory")
     }
-    sq_getstring(v, 2, &filenameFrom);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filenameFrom>"));
-    }
-
-    // get filenameTo
-    const SQChar* filenameTo = 0;
-    if (sq_gettype(v, 3) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <filenameTo>"));
-    }
-    sq_getstring(v, 3, &filenameTo);
-    if (sq_getsize(v, 3) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <filenameTo>"));
-    }
-
-    sq_pushbool(v, Rename(filenameFrom, filenameTo));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // GetFileList(directory)
 static SQInteger script_GetFileList(HSQUIRRELVM v)
 {
-    // get directory
-    const SQChar* directory = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <directory>"));
-    }
-    sq_getstring(v, 2, &directory);
-    if (sq_getsize(v, 2) == 0) { // empty filename
-        return sq_throwerror(v, _SC("invalid parameter <directory>"));
-    }
-
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
     std::vector<std::string> file_list;
     if (!GetFileList(directory, file_list)) {
-        return sq_throwerror(v, _SC("failed to get file list"));
+        THROW_ERROR("Could not get file list")
     }
-
     sq_newarray(v, file_list.size());
     if (file_list.size() > 0) {
         for (int i = 0; i < (int)file_list.size(); ++i) {
@@ -3577,6 +2000,12 @@ static SQInteger script_GetFileList(HSQUIRRELVM v)
 
 /***************************** FILE *******************************/
 
+#define SETUP_FILE_OBJECT() \
+    IFile* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) { \
+        THROW_ERROR("Invalid type of environment object, expected a File instance") \
+    }
+
 //-----------------------------------------------------------------
 static SQInteger script_file_destructor(SQUserPointer p, SQInteger size)
 {
@@ -3589,65 +2018,33 @@ static SQInteger script_file_destructor(SQUserPointer p, SQInteger size)
 // File.getName()
 static SQInteger script_file_getName(HSQUIRRELVM v)
 {
-    IFile* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // return name
-    sq_pushstring(v, This->getName().c_str(), -1);
-    return 1;
+    SETUP_FILE_OBJECT()
+    RET_STRING(This->getName().c_str())
 }
 
 //-----------------------------------------------------------------
 // File._typeof()
 static SQInteger script_file__typeof(HSQUIRRELVM v)
 {
-    IFile* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("File"));
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// File._cloned(file)
-static SQInteger script_file__cloned(HSQUIRRELVM v)
-{
-    // ensure that this function is only ever called on uninitialized File instances
-    IFile* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    return sq_throwerror(v, _SC("files can not be cloned"));
+    SETUP_FILE_OBJECT()
+    RET_STRING("File")
 }
 
 //-----------------------------------------------------------------
 // File._tostring()
 static SQInteger script_file__tostring(HSQUIRRELVM v)
 {
-    IFile* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_FILE_OBJECT()
     std::ostringstream oss;
-    oss << "<File instance (";
+    oss << "<File instance at " << This;
+    oss << " (filename = ";
     if (This->isOpen()) {
         oss << "\"" << This->getName() << "\"";
     } else {
         oss << "N/A";
     }
     oss << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
@@ -3662,31 +2059,35 @@ bool IsFile(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-IFile* GetFile(HSQUIRRELVM v, SQInteger idx)
+void CreateFileDerivedClass()
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_FILE))) {
-        return (IFile*)p;
-    }
-    return 0;
+    sq_pushobject(g_VM, g_FileClass);
+    bool succeeded = SQ_SUCCEEDED(sq_newclass(g_VM, SQTrue));
+    assert(succeeded);
 }
 
 //-----------------------------------------------------------------
-bool BindFile(HSQUIRRELVM v, IFile* file)
+void BindFile(IFile* file)
 {
-    if (!file) {
-        return false;
-    }
-    sq_pushobject(v, g_file_class); // push file class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop file class
-        return false;
-    }
-    sq_remove(v, -2); // pop file class
-    sq_setreleasehook(v, -1, script_file_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)file);
+    assert(g_FileClass._type == OT_CLASS);
+    assert(file);
+    sq_pushobject(g_VM, g_FileClass); // push file class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop file class
+    sq_setreleasehook(g_VM, -1, script_file_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)file);
     file->grab(); // grab a new reference
-    return true;
+}
+
+//-----------------------------------------------------------------
+IFile* GetFile(SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_FILE))) {
+        return (IFile*)p;
+    }
+    return 0;
 }
 
 /******************************************************************
@@ -3707,13 +2108,17 @@ static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
     if (video_modes.size() > 0) {
         for (int i = 0; i < video_modes.size(); ++i) {
             sq_pushinteger(v, i); // key
+
             sq_newtable(v); // value
-            sq_pushstring(v, _SC("width"), -1);
+
+            sq_pushstring(v, "width", -1);
             sq_pushinteger(v, video_modes[i].width);
             sq_newslot(v, -3, SQFalse);
-            sq_pushstring(v, _SC("height"), -1);
+
+            sq_pushstring(v, "height", -1);
             sq_pushinteger(v, video_modes[i].height);
             sq_newslot(v, -3, SQFalse);
+
             sq_rawset(v, -3);
         }
     }
@@ -3724,679 +2129,395 @@ static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
 // OpenWindow(width, height, fullscreen)
 static SQInteger script_OpenWindow(HSQUIRRELVM v)
 {
-    // get width
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
-    }
-    SQInteger width;
-    sq_getinteger(v, 2, &width);
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, width)
+    GET_ARG_INT(2, height)
+    GET_ARG_BOOL(3, fullscreen)
     if (width <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <width>"));
+        THROW_ERROR("Invalid width")
     }
-
-    // get height
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
-    }
-    SQInteger height;
-    sq_getinteger(v, 3, &height);
     if (height <= 0) {
-        return sq_throwerror(v, _SC("invalid parameter <height>"));
+        THROW_ERROR("Invalid height")
     }
+    if (!OpenWindow(width, height, (fullscreen == SQTrue ? true : false))) {
 
-    // get fullscreen
-    if (sq_gettype(v, 4) != OT_BOOL) {
-        return sq_throwerror(v, _SC("invalid type of parameter <fullscreen>"));
     }
-    SQBool fullscreen;
-    sq_getinteger(v, 4, &fullscreen);
-
-    sq_pushbool(v, OpenWindow(width, height, fullscreen));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // IsWindowOpen()
 static SQInteger script_IsWindowOpen(HSQUIRRELVM v)
 {
-    sq_pushbool(v, IsWindowOpen());
-    return 1;
+    RET_BOOL(IsWindowOpen())
 }
 
 //-----------------------------------------------------------------
 // GetWindowWidth()
 static SQInteger script_GetWindowWidth(HSQUIRRELVM v)
 {
-    sq_pushinteger(v, GetWindowWidth());
-    return 1;
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_INT(GetWindowWidth())
 }
 
 //-----------------------------------------------------------------
 // GetWindowHeight()
 static SQInteger script_GetWindowHeight(HSQUIRRELVM v)
 {
-    sq_pushinteger(v, GetWindowHeight());
-    return 1;
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_INT(GetWindowHeight())
 }
 
 //-----------------------------------------------------------------
 // IsWindowFullscreen()
 static SQInteger script_IsWindowFullscreen(HSQUIRRELVM v)
 {
-    sq_pushbool(v, IsWindowFullscreen());
-    return 1;
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_BOOL(IsWindowFullscreen())
 }
 
 //-----------------------------------------------------------------
 // SetWindowFullscreen(fullscreen)
 static SQInteger script_SetWindowFullscreen(HSQUIRRELVM v)
 {
-    // get fullscreen
-    if (sq_gettype(v, 2) != OT_BOOL) {
-        return sq_throwerror(v, _SC("invalid type of parameter <fullscreen>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    SQBool fullscreen;
-    sq_getinteger(v, 2, &fullscreen);
-
-    sq_pushbool(v, SetWindowFullscreen(fullscreen));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_BOOL(1, fullscreen)
+    SetWindowFullscreen((fullscreen == SQTrue ? true : false))
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // GetWindowTitle()
 static SQInteger script_GetWindowTitle(HSQUIRRELVM v)
 {
-    sq_pushstring(v, GetWindowTitle(), -1);
-    return 1;
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_STRING(GetWindowTitle())
 }
 
 //-----------------------------------------------------------------
 // SetWindowTitle(title)
 static SQInteger script_SetWindowTitle(HSQUIRRELVM v)
 {
-    // get title
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <title>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    const SQChar* title = 0;
-    sq_getstring(v, 2, &title);
-
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, title)
     SetWindowTitle(title);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // SetWindowIcon(icon)
 static SQInteger script_SetWindowIcon(HSQUIRRELVM v)
 {
-    // get icon
-    if (!IsCanvas(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <icon>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Canvas* icon = GetCanvas(v, 2);
-    assert(icon);
-
+    CHECK_NARGS(1)
+    GET_ARG_CANVAS(1, icon)
     SetWindowIcon(icon);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// SwapBuffers()
+// SwapFrameBuffers()
 static SQInteger script_SwapWindowBuffers(HSQUIRRELVM v)
 {
-    SwapWindowBuffers();
-    return 0;
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    SwapFrameBuffers();
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// GetClipRect()
+// GetFrameBufferClipRect()
 static SQInteger script_GetClipRect(HSQUIRRELVM v)
 {
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
     Recti clip_rect;
-    if (!GetClipRect(clip_rect)) {
-        return sq_throwerror(v, _SC("failed to get clip rect"));
+    if (!GetFrameBufferClipRect(clip_rect)) {
+        THROW_ERROR("Could not get frame buffer clipping rectangle")
     }
-
-    if (!BindRect(v, clip_rect)) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_RECT(clip_rect)
 }
 
 //-----------------------------------------------------------------
-// SetClipRect(clip_rect)
+// SetFrameBufferClipRect(clip_rect)
 static SQInteger script_SetClipRect(HSQUIRRELVM v)
 {
-    // get clip_rect
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <clip_rect>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Recti* clip_rect = GetRect(v, 2);
-    assert(clip_rect);
-
-    SetClipRect(*clip_rect);
-    return 0;
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, clip_rect)
+    if (!SetFrameBufferClipRect(*clip_rect)) {
+        THROW_ERROR("Could not set frame buffer clipping rectangle")
+    }
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// CreateTexture(canvas)
-static SQInteger script_CreateTexture(HSQUIRRELVM v)
+// CloneFrameBufferSection(section)
+static SQInteger script_CloneFrameBuffer(HSQUIRRELVM v)
 {
-    // get canvas
-    if (!IsCanvas(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <canvas>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Canvas* canvas = GetCanvas(v, 2);
-    assert(canvas);
-
-    if (!BindTexture(v, CreateTexture(canvas))) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// CloneSection(section)
-static SQInteger script_CloneSection(HSQUIRRELVM v)
-{
-    // get section
-    if (!IsRect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <section>"));
-    }
-    Recti* section = GetRect(v, 2);
-    assert(section);
-
-    // clone
-    TexturePtr texture = video::CloneSection(*section);
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, section)
+    TexturePtr texture = CloneFrameBufferSection(*section);
     if (!texture) {
-        return sq_throwerror(v, _SC("failed to clone video section"));
+        THROW_ERROR("Could not clone frame buffer section")
     }
-
-    if (!BindTexture(v, texture.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_TEXTURE(texture.get())
 }
 
 //-----------------------------------------------------------------
-// DrawPoint(pos, col)
+// DrawPoint(x, y, color)
 static SQInteger script_DrawPoint(HSQUIRRELVM v)
 {
-    // get pos
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Vec2i* pos = GetVec2(v, 2);
-    assert(pos);
-
-    // get color
-    if (!IsRGBA(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <color>"));
-    }
-    RGBA* col = GetRGBA(v, 2);
-    assert(col);
-
-    video::DrawPoint(*pos, *col);
-    return 0;
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    GET_ARG_INT(3, color)
+    DrawPoint(Vec2i(x, y), RGBA::Unpack((u32)color));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawLine(pos1, pos2, col [, col2])
+// DrawLine(x1, y1, x2, y2, col1 [, col2])
 static SQInteger script_DrawLine(HSQUIRRELVM v)
 {
-    // get pos1
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Vec2i* pos1 = GetVec2(v, 2);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 3);
-    assert(pos2);
-
+    CHECK_MIN_NARGS(3)
+    GET_ARG_INT(1, x1);
+    GET_ARG_INT(2, y1);
+    GET_ARG_INT(3, x2);
+    GET_ARG_INT(4, y2);
+    GET_ARG_INT(5, col1)
+    GET_OPTARG_INT(6, col2, col1)
     Vec2i positions[2] = {
-        *pos1,
-        *pos2,
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
     };
-
-    // get col
-    if (!IsRGBA(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-    }
-    RGBA* col = GetRGBA(v, 4);
-    assert(col);
-
     RGBA colors[2] = {
-        *col,
-        *col,
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
     };
-
-    // get optional col2
-    if (sq_gettop(v) >= 5) {
-        if (!IsRGBA(v, 5)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col2>"));
-        }
-        colors[1] = GetRGBA(v, 5);
-    }
-
-    video::DrawLine(positions, colors);
-    return 0;
+    DrawLine(positions, colors);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawTriangle(pos1, pos2, pos3, col [, col2, col3])
+// DrawTriangle(x1, y1, x2, y2, x3, y3, col1 [, col2, col3])
 static SQInteger script_DrawTriangle(HSQUIRRELVM v)
 {
-    // get pos1
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Vec2i* pos1 = GetVec2(v, 2);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 3);
-    assert(pos2);
-
-    // get pos3
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
-    }
-    Vec2i* pos3 = GetVec2(v, 4);
-    assert(pos3);
-
+    CHECK_MIN_NARGS(7)
+    GET_ARG_INT(1, x1)
+    GET_ARG_INT(2, y1)
+    GET_ARG_INT(3, x2)
+    GET_ARG_INT(4, y2)
+    GET_ARG_INT(5, x3)
+    GET_ARG_INT(6, y3)
+    GET_ARG_INT(7, col1)
+    GET_OPTARG_INT(8, col2, col1)
+    GET_OPTARG_INT(9, col3, col1)
     Vec2i positions[3] = {
-        *pos1,
-        *pos2,
-        *pos3,
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
     };
-
-    // get col
-    if (!IsRGBA(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-    }
-    RGBA* col = GetRGBA(v, 5);
-    assert(col);
-
-    RGBA  colors[3] = {
-        *col,
-        *col,
-        *col,
+    RGBA colors[3] = {
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
+        RGBA::Unpack((u32)col3),
     };
-
-    // get optional col2
-    RGBA* col2 = 0;
-    if (sq_gettop(v) >= 6) {
-        if (!IsRGBA(v, 6)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col2>"));
-        }
-        colors[1] = GetRGBA(v, 6);
-    }
-
-    // get optional col3
-    if (sq_gettop(v) >= 7) {
-        if (!IsRGBA(v, 7)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col3>"));
-        }
-        colors[2] = GetRGBA(v, 7);
-    }
-
-    video::DrawTriangle(positions, colors);
-    return 0;
+    DrawTriangle(positions, colors);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawTexturedTriangle(texture, texcoord1, texcoord2, texcoord3, pos1, pos2, pos3 [, mask_col])
+// DrawTexturedTriangle(tex, tx1, ty1, tx2, ty2, tx3, ty3, x1, y1, x2, y2, x3, y3 [, mask = Color.New(255, 255, 255)])
 static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
 {
-    // get texture
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texture>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    ITexture* texture = GetTexture(v, 2);
-    assert(texture);
-
-    // get texcoord1
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texcoord1>"));
-    }
-    Vec2i* texcoord1 = GetVec2(v, 3);
-    assert(texcoord1);
-
-    // get texcoord2
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texcoord2>"));
-    }
-    Vec2i* texcoord2 = GetVec2(v, 4);
-    assert(texcoord2);
-
-    // get texcoord3
-    if (!IsVec2(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texcoord3>"));
-    }
-    Vec2i* texcoord3 = GetVec2(v, 5);
-    assert(texcoord3);
-
+    CHECK_MIN_NARGS(13)
+    GET_ARG_TEXTURE(1, tex)
+    GET_ARG_INT(2, tx1)
+    GET_ARG_INT(3, ty1)
+    GET_ARG_INT(4, tx2)
+    GET_ARG_INT(5, ty2)
+    GET_ARG_INT(6, tx3)
+    GET_ARG_INT(7, ty3)
+    GET_ARG_INT(8, x1)
+    GET_ARG_INT(9, y1)
+    GET_ARG_INT(10, x2)
+    GET_ARG_INT(11, y2)
+    GET_ARG_INT(12, x3)
+    GET_ARG_INT(13, y3)
+    GET_OPTARG_INT(14, mask, RGBA::Pack(255, 255, 255))
     Vec2i texcoords[3] = {
-        *texcoord1,
-        *texcoord2,
-        *texcoord3,
+        Vec2i(tx1, ty1),
+        Vec2i(tx2, ty2),
+        Vec2i(tx3, ty3),
     };
-
-    // get pos1
-    if (!IsVec2(v, 6)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
-    }
-    Vec2i* pos1 = GetVec2(v, 6);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 7)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 7);
-    assert(pos2);
-
-    // get pos3
-    if (!IsVec2(v, 8)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
-    }
-    Vec2i* pos3 = GetVec2(v, 8);
-    assert(pos3);
-
     Vec2i positions[3] = {
-        *pos1,
-        *pos2,
-        *pos3,
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
     };
-
-    // get optional mask_col
-    RGBA* mask_col = 0;
-    if (sq_gettop(v) >= 9) {
-        if (!IsRGBA(v, 9)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-        }
-        mask_col = GetRGBA(v, 9);
-        assert(mask_col);
-    }
-
-    video::DrawTexturedTriangle(texture, texcoords, positions, mask_col);
-    return 0;
+    DrawTexturedTriangle(tex, texcoords, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
 }
 
-DrawRect(Vec2(10, 10), 100, 50, RGBA(200, 30, 50));
-
 //-----------------------------------------------------------------
-// DrawRect(pos, width, height, col [, col2, col3, col4])
+// DrawRect(x, y, width, height, col [, col2, col3, col4])
 static SQInteger script_DrawRect(HSQUIRRELVM v)
 {
-    // get pos
-    if (!IsVec2(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    Vec2i* pos = GetVec2(v, 2);
-    assert(pos);
-
-    // get width
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <width>"));
-    }
-    SQInteger width;
-    sq_getinteger(v, 3, &width);
-
-    // get height
-    if (sq_gettype(v, 4) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <height>"));
-    }
-    SQInteger height;
-    sq_getinteger(v, 4, &height);
-
-    // get col
-    if (!IsRGBA(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-    }
-    RGBA* col = GetRGBA(v, 5);
-    assert(col);
-
+    CHECK_MIN_NARGS(5)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    GET_ARG_INT(3, width)
+    GET_ARG_INT(4, height)
+    GET_ARG_INT(5, col)
+    GET_OPTARG_INT(6, col2, col1)
+    GET_OPTARG_INT(7, col3, col1)
+    GET_OPTARG_INT(8, col4, col1)
     RGBA colors[4] = {
-        *col,
-        *col,
-        *col,
-        *col,
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
+        RGBA::Unpack((u32)col3),
+        RGBA::Unpack((u32)col4),
     };
-
-    // get optional col2
-    if (sq_gettop(v) >= 6) {
-        if (!IsRGBA(v, 6)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col2>"));
-        }
-        colors[1] = *(GetRGBA(v, 6));
-    }
-
-    // get optional col3
-    if (sq_gettop(v) >= 7) {
-        if (!IsRGBA(v, 7)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col3>"));
-        }
-        colors[2] = *(GetRGBA(v, 7));
-    }
-
-    // get optional col4
-    if (sq_gettop(v) >= 8) {
-        if (!IsRGBA(v, 8)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col4>"));
-        }
-        colors[3] = *(GetRGBA(v, 8));
-    }
-
-    video::DrawRect(*rect, colors);
-    return 0;
+    DrawRect(Vec2i(x, y), width, height, colors);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawImage(image, pos [, mask_col])
+// DrawImage(image, pos [, mask = Color.New(255, 255, 255)])
 static SQInteger script_DrawImage(HSQUIRRELVM v)
 {
-    // get image
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <image>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    ITexture* image = GetTexture(v, 2);
-    assert(image);
-
-    // get pos
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
-    }
-    Vec2i* pos = GetVec2(v, 3);
-    assert(pos);
-
-    // get optional mask_col
-    RGBA* mask_col = 0;
-    if (sq_gettop(v) >= 4) {
-        if (!IsRGBA(v, 4)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-        }
-        RGBA* col = GetRGBA(v, 4);
-    }
-
-    video::DrawImage(image, pos, mask_col);
-    return 0;
+    CHECK_MIN_NARGS(3)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_INT(2, x)
+    GET_ARG_INT(3, y)
+    GET_OPTARG_INT(4, mask, RGBA::Pack(255, 255, 255))
+    DrawImage(image, Vec2i(x, y), RGBA::Unpack((u32)mask));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawSubImage(image, src_rect, pos [, mask_col])
+// DrawSubImage(image, src_rect, x, y [, mask = Color.New(255, 255, 255)])
 static SQInteger script_DrawSubImage(HSQUIRRELVM v)
 {
-    // get image
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <image>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    ITexture* image = GetTexture(v, 2);
-    assert(image);
-
-    // get src_rect
-    if (!IsRect(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <src_rect>"));
-    }
-    Recti* src_rect = GetRect(v, 3);
-    assert(src_rect);
-
-    // get pos
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
-    }
-    Vec2i* pos = GetVec2(v, 4);
-    assert(pos);
-
-    // get optional mask_col
-    RGBA* mask_col = 0;
-    if (sq_gettop(v) >= 5) {
-        if (!IsRGBA(v, 5)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <col>"));
-        }
-        RGBA* col = GetRGBA(v, 5);
-    }
-
-    video::DrawSubImage(image, *src_rect, pos, mask_col);
-    return 0;
+    CHECK_MIN_NARGS(4)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_RECT(2, src_rect)
+    GET_ARG_INT(3, x)
+    GET_ARG_INT(4, y)
+    GET_OPTARG_INT(5, mask, RGBA::Pack(255, 255, 255))
+    DrawSubImage(image, *src_rect, Vec2i(x, y), RGBA::Unpack((u32)mask));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawImageQuad(image, pos1, pos2, pos3, pos4 [, mask_col])
+// DrawImageQuad(image, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = Color.New(255, 255, 255)])
 static SQInteger script_DrawImageQuad(HSQUIRRELVM v)
 {
-    // get image
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <image>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    ITexture* image = GetTexture(v, 2);
-    assert(texture);
-
-    // get pos1
-    if (!IsVec2(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
-    }
-    Vec2i* pos1 = GetVec2(v, 3);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 4);
-    assert(pos2);
-
-    // get pos3
-    if (!IsVec2(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
-    }
-    Vec2i* pos3 = GetVec2(v, 5);
-    assert(pos3);
-
-    // get pos4
-    if (!IsVec2(v, 6)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos4>"));
-    }
-    Vec2i* pos4 = GetVec2(v, 6);
-    assert(pos4);
-
+    CHECK_MIN_NARGS(9)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_INT(2, x1)
+    GET_ARG_INT(3, y1)
+    GET_ARG_INT(4, x2)
+    GET_ARG_INT(5, y2)
+    GET_ARG_INT(6, x3)
+    GET_ARG_INT(7, y3)
+    GET_ARG_INT(8, x4)
+    GET_ARG_INT(9, y4)
+    GET_OPTARG_INT(10, mask, RGBA::Pack(255, 255, 255))
     Vec2i positions[4] = {
-        *pos1,
-        *pos2,
-        *pos3,
-        *pos4,
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+        Vec2i(x4, y4),
     };
-
-    // get optional mask_col
-    RGBA* mask_col = 0;
-    if (sq_gettop(v) >= 7) {
-        if (!IsRGBA(v, 7)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <mask_col>"));
-        }
-        mask_col = GetRGBA(v, 7);
-        assert(mask_col);
-    }
-
-    video::DrawImageQuad(image, positions, mask_col);
-    return 0;
+    DrawImageQuad(image, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// DrawSubImageQuad(image, src_rect, pos1, pos2, pos3, pos4 [, mask_col])
+// DrawSubImageQuad(image, src_rect, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = Color.New(255, 255, 255)])
 static SQInteger script_DrawSubImageQuad(HSQUIRRELVM v)
 {
-    // get image
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <image>"));
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
     }
-    ITexture* image = GetTexture(v, 2);
-    assert(image);
-
-    // get src_rect
-    if (!IsRect(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <src_rect>"));
-    }
-    Recti* src_rect = GetRect(v, 3);
-    assert(src_rect);
-
-    // get pos1
-    if (!IsVec2(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos1>"));
-    }
-    Vec2i* pos1 = GetVec2(v, 4);
-    assert(pos1);
-
-    // get pos2
-    if (!IsVec2(v, 5)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos2>"));
-    }
-    Vec2i* pos2 = GetVec2(v, 5);
-    assert(pos2);
-
-    // get pos3
-    if (!IsVec2(v, 6)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos3>"));
-    }
-    Vec2i* pos3 = GetVec2(v, 6);
-    assert(pos3);
-
-    // get pos4
-    if (!IsVec2(v, 7)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <pos4>"));
-    }
-    Vec2i* pos4 = GetVec2(v, 7);
-    assert(pos4);
-
+    CHECK_MIN_NARGS(10)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_RECT(2, src_rect)
+    GET_ARG_INT(3, x1)
+    GET_ARG_INT(4, y1)
+    GET_ARG_INT(5, x2)
+    GET_ARG_INT(6, y2)
+    GET_ARG_INT(7, x3)
+    GET_ARG_INT(8, y3)
+    GET_ARG_INT(9, x4)
+    GET_ARG_INT(10, y4)
+    GET_OPTARG_INT(11, mask, RGBA::Pack(255, 255, 255))
     Vec2i positions[4] = {
-        *pos1,
-        *pos2,
-        *pos3,
-        *pos4,
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+        Vec2i(x4, y4),
     };
-
-    // get optional mask_col
-    RGBA* mask_col = 0;
-    if (sq_gettop(v) >= 8) {
-        if (!IsRGBA(v, 8)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <mask_col>"));
-        }
-        mask_col = GetRGBA(v, 8);
-        assert(mask_col);
-    }
-
-    video::DrawSubImageQuad(image, *src_rect, positions, mask_col);
-    return 0;
+    DrawSubImageQuad(image, *src_rect, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
 }
 
 /**************************** TEXTURE *****************************/
+
+#define SETUP_TEXTURE_OBJECT() \
+    ITexture* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Texture instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_texture_destructor(SQUserPointer p, SQInteger size)
@@ -4407,249 +2528,178 @@ static SQInteger script_texture_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Texture.updatePixels(canvas [, dst_rect])
+// Texture(canvas)
+static SQInteger script_texture_constructor(HSQUIRRELVM v)
+{
+    SETUP_TEXTURE_OBJECT()
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_CANVAS(1, image)
+    TexturePtr texture = CreateTexture(image);
+    if (!texture) {
+        THROW_ERROR("Could not create texture")
+    }
+    RET_TEXTURE(texture.get())
+}
+
+//-----------------------------------------------------------------
+// Texture.updatePixels(new_pixels [, dst_rect])
 static SQInteger script_texture_updatePixels(HSQUIRRELVM v)
 {
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_TEXTURE_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_CANVAS(1, new_pixels)
+    GET_OPTARG_RECT(2, dst_rect)
+    if (!This->updatePixels(new_pixels, dst_rect)) {
+        THROW_ERROR("Could not update pixels")
     }
-    assert(This);
-
-    // get canvas
-    if (!IsCanvas(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <canvas>"));
-    }
-    Canvas* canvas = GetCanvas(v, 2);
-    assert(canvas);
-
-    // get optional dst_rect
-    Recti* dst_rect = 0;
-    if (sq_gettop(v) >= 3) {
-        if (!IsRect(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <dst_rect>"));
-        }
-        dst_rect = GetRect(v, 3);
-        assert(dst_rect);
-    }
-
-    sq_pushbool(v, This->updatePixels(canvas, dst_rect));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Texture.createCanvas()
 static SQInteger script_texture_createCanvas(HSQUIRRELVM v)
 {
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // create canvas
+    SETUP_TEXTURE_OBJECT()
     CanvasPtr canvas = This->createCanvas();
-    if (!canvas) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    if (!BindCanvas(v, canvas.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_CANVAS(canvas.get())
 }
 
 //-----------------------------------------------------------------
 // Texture._get(index)
 static SQInteger script_texture__get(HSQUIRRELVM v)
 {
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string index
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    const SQChar* index = 0;
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("width")) == 0) {
-        sq_pushinteger(v, This->getWidth());
-    } else if (scstrcmp(index, _SC("height")) == 0) {
-        sq_pushinteger(v, This->getHeight());
+    SETUP_TEXTURE_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "width") == 0) {
+        RET_INT(This->getWidth())
+    } else if (strcmp(index, "height") == 0) {
+        RET_INT(This->getHeight())
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Texture._typeof()
 static SQInteger script_texture__typeof(HSQUIRRELVM v)
 {
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Texture"));
-    return 1;
+    SETUP_TEXTURE_OBJECT()
+    RET_STRING("Texture")
 }
 
 //-----------------------------------------------------------------
-// Texture._cloned(texture)
+// Texture._cloned(original)
 static SQInteger script_texture__cloned(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Texture instances
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get original texture
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texture>"));
-    }
-    Canvas* orig = GetTexture(v, 2);
-    assert(orig);
-
-    // convert original texture to canvas
-    CanvasPtr canvas = orig->createCanvas();
-    if (!canvas) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
-    // clone texture
+    SETUP_TEXTURE_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_TEXTURE(1, original)
+    CanvasPtr canvas = original->createCanvas();
     This = CreateTexture(canvas.get());
-    if (!This) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_texture_destructor);
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Texture._tostring()
 static SQInteger script_texture__tostring(HSQUIRRELVM v)
 {
-    ITexture* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_TEXTURE))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_TEXTURE_OBJECT()
     std::ostringstream oss;
-    oss << "<Texture instance (" << This->getWidth() << ", " << This->getHeight() << ")>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<Texture instance at " << This;
+    oss << " (" << This->getWidth();
+    oss << ", " << This->getHeight();
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-// Texture._dump(texture, stream)
+// Texture._dump(instance, stream)
 static SQInteger script_texture__dump(HSQUIRRELVM v)
 {
-    // get texture
-    if (!IsTexture(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <texture>"));
-    }
-    ITexture* texture = GetTexture(v, 2);
-    assert(texture);
+    CHECK_NARGS(2)
+    GET_ARG_TEXTURE(1, instance)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
     if (!stream->isOpen() || !stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid output stream")
     }
 
     // convert texture to canvas
-    CanvasPtr canvas = texture->createCanvas();
-    if (!canvas) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
+    CanvasPtr canvas = instance->createCanvas();
 
     // write class name
     const char* class_name = "Texture";
     int num_bytes = strlen(class_name);
-    if (!writeu32l(stream, num_bytes) || stream->write(class_name, num_bytes) != num_bytes) {
+    if (!writei32l(stream, (i32)num_bytes) || stream->write(class_name, num_bytes) != num_bytes) {
         goto throw_write_error;
     }
 
-    // write texture dimensions
-    if (!writeu32l(stream, (u32)canvas->getWidth()) ||
-        !writeu32l(stream, (u32)canvas->getHeight())) {
+    // write dimensions
+    if (!writei32l(stream, (i32)canvas->getWidth()) ||
+        !writei32l(stream, (i32)canvas->getHeight()))
+    {
         goto throw_write_error;
     }
 
-    // write texture pixels
+    // write pixels
     int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
     if (stream->write(canvas->getPixels(), pixels_size) != pixels_size) {
         goto throw_write_error;
     }
-    return 0;
+
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // Texture._load(stream)
 static SQInteger script_texture__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
-    // read texture dimensions
+    // read dimensions
     u32 width;
     u32 height;
-    if (!readu32l(stream, width) || !readu32l(stream, height)) {
+    if (!readi32l(stream, (i32)width) ||
+        !readi32l(stream, (i32)height))
+    {
         goto throw_read_error;
+    }
+    if (width * height <= 0) {
+        THROW_ERROR("Invalid dimensions")
     }
 
     // create a temporary canvas
     CanvasPtr canvas = Canvas::Create(width, height);
-    if (!canvas) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
 
-    // read texture pixels into the temporary canvas
+    // read pixels
     int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
     if (stream->read(canvas->getPixels(), pixels_size) != pixels_size) {
         goto throw_read_error;
     }
 
-    // create texture from the canvas
-    TexturePtr texture = CreateTexture(canvas.get());
-    if (!texture) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
+    // create texture
+    TexturePtr instance = CreateTexture(canvas.get());
 
-    if (!BindTexture(v, texture.get()) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_TEXTURE(instance.get())
 
 throw_read_error:
-    return sq_throwerror(v, _SC("read error"));
+    THROW_ERROR("Read error")
 }
 
 //-----------------------------------------------------------------
@@ -4664,31 +2714,27 @@ bool IsTexture(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-ITexture* GetTexture(HSQUIRRELVM v, SQInteger idx)
+void BindTexture(ITexture* texture)
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_TEXTURE))) {
-        return (ITexture*)p;
-    }
-    return 0;
+    assert(g_TextureClass._type == OT_CLASS);
+    assert(texture);
+    sq_pushobject(g_VM, g_TextureClass); // push texture class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop texture class
+    sq_setreleasehook(g_VM, -1, script_texture_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)texture);
+    texture->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-bool BindTexture(HSQUIRRELVM v, ITexture* texture)
+ITexture* GetTexture(SQInteger idx)
 {
-    if (!texture) {
-        return false;
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_TEXTURE))) {
+        return (ITexture*)p;
     }
-    sq_pushobject(v, g_texture_class); // push texture class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop texture class
-        return false;
-    }
-    sq_remove(v, -2); // pop texture class
-    sq_setreleasehook(v, -1, script_texture_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)texture);
-    texture->grab(); // grab a new reference
-    return true;
+    return 0;
 }
 
 /******************************************************************
@@ -4697,115 +2743,13 @@ bool BindTexture(HSQUIRRELVM v, ITexture* texture)
  *                                                                *
  ******************************************************************/
 
-/*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// LoadSound(source [, streaming = false])
-static SQInteger script_LoadSound(HSQUIRRELVM v)
-{
-    if (sq_gettype(v, 2) == OT_STRING) {
-        // get filename
-        const SQChar* filename = 0;
-        sq_getstring(v, 2, &filename);
-
-        // get optional streaming
-        SQBool streaming = SQFalse;
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettop(v, 3) != OT_BOOL) {
-                return sq_throwerror(v, _SC("invalid type of parameter <streaming>"));
-            }
-            sq_getbool(v, 3, &streaming);
-        }
-
-        // open file
-        FilePtr file = filesystem::OpenFile(filename);
-        if (!file) {
-            return sq_throwerror(v, _SC("failed to open file"));
-        }
-
-        // load sound
-        SoundPtr sound = audio::LoadSound(file.get(), (streaming == SQTrue ? true : false));
-        if (!sound) {
-            return sq_throwerror(v, _SC("failed to load sound"));
-        }
-
-        if (!BindSound(v, sound.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-    } else if (IsStream(v, 2)) {
-        // get stream
-        IStream* stream = GetStream(v, 2);
-        assert(stream);
-
-        // get optional streaming
-        SQBool streaming = SQFalse;
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettop(v, 3) != OT_BOOL) {
-                return sq_throwerror(v, _SC("invalid type of parameter <streaming>"));
-            }
-            sq_getbool(v, 3, &streaming);
-        }
-
-        // load sound
-        SoundPtr sound = audio::LoadSound(stream, (streaming == SQTrue ? true : false));
-        if (!sound) {
-            return sq_throwerror(v, _SC("failed to load sound"));
-        }
-
-        if (!BindSound(v, sound.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-    } else {
-        return sq_throwerror(v, _SC("invalid type of parameter <source>"));
-    }
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// LoadSoundEffect(source)
-static SQInteger script_LoadSoundEffect(HSQUIRRELVM v)
-{
-    if (sq_gettype(v, 2) == OT_STRING) {
-        // get filename
-        const SQChar* filename = 0;
-        sq_getstring(v, 2, &filename);
-
-        // open file
-        FilePtr file = filesystem::OpenFile(filename);
-        if (!file) {
-            return sq_throwerror(v, _SC("failed to open file"));
-        }
-
-        // load sound effect
-        SoundEffectPtr sound_effect = audio::LoadSoundEffect(file.get());
-        if (!sound_effect) {
-            return sq_throwerror(v, _SC("failed to load sound effect"));
-        }
-
-        if (!BindSoundEffect(v, sound_effect.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-    } else if (IsStream(v, 2)) {
-        // get stream
-        IStream* stream = GetStream(v, 2);
-        assert(stream);
-
-        // load sound effect
-        SoundEffectPtr sound_effect = audio::LoadSoundEffect(stream);
-        if (!sound_effect) {
-            return sq_throwerror(v, _SC("failed to load sound effect"));
-        }
-
-        if (!BindSoundEffect(v, sound_effect.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
-    } else {
-        return sq_throwerror(v, _SC("invalid type of parameter <source>"));
-    }
-    return 1;
-}
-
 /***************************** SOUND ******************************/
+
+#define SETUP_SOUND_OBJECT() \
+    ISound* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Sound instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_sound_destructor(SQUserPointer p, SQInteger size)
@@ -4816,182 +2760,146 @@ static SQInteger script_sound_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
+// Sound.Load(filename [, streaming = false])
+static SQInteger script_sound_Load(HSQUIRRELVM v)
+{
+    SETUP_SOUND_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    GET_OPTARG_BOOL(2, streaming, SQFalse)
+    FilePtr file = OpenFile(filename);
+    if (!file) {
+        THROW_ERROR("Could not open file")
+    }
+    SoundPtr sound = LoadSound(file.get(), (streaming == SQTrue ? true : false));
+    if (!sound) {
+        THROW_ERROR("Could not load sound")
+    }
+    RET_SOUND(sound.get())
+}
+
+//-----------------------------------------------------------------
+// Sound.LoadFromStream(stream [, streaming = false])
+static SQInteger script_sound_LoadFromStream(HSQUIRRELVM v)
+{
+    SETUP_SOUND_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+    GET_OPTARG_BOOL(2, streaming, SQFalse)
+    SoundPtr sound = LoadSound(stream, (streaming == SQTrue ? true : false));
+    if (!sound) {
+        THROW_ERROR("Could not load sound")
+    }
+    RET_SOUND(sound.get())
+}
+
+
+//-----------------------------------------------------------------
 // Sound.play()
 static SQInteger script_sound_play(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_SOUND_OBJECT()
     This->play();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Sound.stop()
 static SQInteger script_sound_stop(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_SOUND_OBJECT()
     This->stop();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Sound.reset()
 static SQInteger script_sound_reset(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_SOUND_OBJECT()
     This->reset();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Sound.isPlaying()
 static SQInteger script_sound_isPlaying(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isPlaying());
-    return 1;
+    SETUP_SOUND_OBJECT()
+    RET_BOOL(This->isPlaying())
 }
 
 //-----------------------------------------------------------------
 // Sound.isSeekable()
 static SQInteger script_sound_isSeekable(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isSeekable());
-    return 1;
+    SETUP_SOUND_OBJECT()
+    RET_BOOL(This->isSeekable())
 }
 
 //-----------------------------------------------------------------
 // Sound._get(index)
 static SQInteger script_sound__get(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string index
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    const SQChar* index = 0;
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("length")) == 0) {
-        sq_pushinteger(v, This->getLength());
-    } else if (scstrcmp(index, _SC("repeat")) == 0) {
-        sq_pushbool(v, This->getRepeat());
-    } else if (scstrcmp(index, _SC("volume")) == 0) {
-        sq_pushinteger(v, This->getVolume());
-    } else if (scstrcmp(index, _SC("position")) == 0) {
-        sq_pushinteger(v, This->getPosition());
+    SETUP_SOUND_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "length") == 0) {
+        RET_INT(This->getLength())
+    } else if (strcmp(index, "repeat") == 0) {
+        RET_BOOL(This->getRepeat())
+    } else if (strcmp(index, "volume") == 0) {
+        RET_INT(This->getVolume())
+    } else if (strcmp(index, "position") == 0) {
+        RET_INT(This->getPosition())
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Sound._set(index, value)
 static SQInteger script_sound__set(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string index
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    const SQChar* index = 0;
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("repeat")) == 0) {
-        SQBool value;
-        if (sq_gettype(v, 3) != OT_BOOL) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getbool(v, 3, &value);
+    SETUP_SOUND_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "repeat") == 0) {
+        GET_ARG_BOOL(2, value)
         This->setRepeat((value == SQTrue ? true : false));
-    } else if (scstrcmp(index, _SC("volume")) == 0) {
-        SQInteger value;
-        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getinteger(v, 3, &value);
+    } else if (strcmp(index, "volume") == 0) {
+        GET_ARG_INT(2, value)
         This->setVolume(value);
-    } else if (scstrcmp(index, _SC("position")) == 0) {
-        SQInteger value;
-        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getinteger(v, 3, &value);
+    } else if (strcmp(index, "position") == 0) {
+        GET_ARG_INT(2, value)
         This->setPosition(value);
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Sound._typeof()
 static SQInteger script_sound__typeof(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Sound"), -1);
-    return 1;
+    SETUP_SOUND_OBJECT()
+    RET_STRING("Sound")
 }
 
 //-----------------------------------------------------------------
 // Sound._tostring()
 static SQInteger script_sound__tostring(HSQUIRRELVM v)
 {
-    ISound* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUND))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("<Sound instance>"), -1);
-    return 1;
+    SETUP_SOUND_OBJECT()
+    std::ostringstream oss;
+    oss << "<Sound instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
@@ -5006,34 +2914,36 @@ bool IsSound(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-ISound* GetSound(HSQUIRRELVM v, SQInteger idx)
+void BindSound(ISound* sound)
+{
+    assert(g_SoundClass._type == OT_CLASS);
+    assert(sound);
+    sq_pushobject(g_VM, g_SoundClass); // push sound class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop sound class
+    sq_setreleasehook(g_VM, -1, script_sound_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)sound);
+    sound->grab(); // grab a new reference
+}
+
+//-----------------------------------------------------------------
+ISound* GetSound(SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUND))) {
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_SOUND))) {
         return (ISound*)p;
     }
     return 0;
 }
 
-//-----------------------------------------------------------------
-bool BindSound(HSQUIRRELVM v, ISound* sound)
-{
-    if (!sound) {
-        return false;
-    }
-    sq_pushobject(v, g_sound_class); // push sound class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop sound class
-        return false;
-    }
-    sq_remove(v, -2); // pop sound class
-    sq_setreleasehook(v, -1, script_sound_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)sound);
-    sound->grab(); // grab a new reference
-    return true;
-}
-
 /************************** SOUNDEFFECT ***************************/
+
+#define SETUP_SOUNDEFFECT_OBJECT() \
+    ISoundEffect* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) { \
+        THROW_ERROR("Invalid type of environment object, expected a SoundEffect instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_soundeffect_destructor(SQUserPointer p, SQInteger size)
@@ -5044,120 +2954,104 @@ static SQInteger script_soundeffect_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
+// SoundEffect.Load(filename)
+static SQInteger script_soundeffect_Load(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    FilePtr file = OpenFile(filename);
+    if (!file) {
+        THROW_ERROR("Could not open file")
+    }
+    SoundEffectPtr sound_effect = LoadSoundEffect(file.get());
+    if (!sound_effect) {
+        THROW_ERROR("Could not load sound")
+    }
+    RET_SOUNDEFFECT(sound_effect.get())
+}
+
+//-----------------------------------------------------------------
+// SoundEffect.LoadFromStream(stream)
+static SQInteger script_soundeffect_LoadFromStream(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+    SoundEffectPtr sound_effect = LoadSoundEffect(stream);
+    if (!sound_effect) {
+        THROW_ERROR("Could not load sound")
+    }
+    RET_SOUNDEFFECT(sound_effect.get())
+}
+
+//-----------------------------------------------------------------
 // SoundEffect.play()
 static SQInteger script_soundeffect_play(HSQUIRRELVM v)
 {
-    ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_SOUNDEFFECT_OBJECT()
     This->play();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // SoundEffect.stop()
 static SQInteger script_soundeffect_stop(HSQUIRRELVM v)
 {
-    ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_SOUNDEFFECT_OBJECT()
     This->stop();
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // SoundEffect._get(index)
 static SQInteger script_soundeffect__get(HSQUIRRELVM v)
 {
-    Canvas* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string index
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    const SQChar* index = 0;
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("volume")) == 0) {
-        sq_pushinteger(v, This->getVolume());
+    SETUP_SOUNDEFFECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "volume") == 0) {
+        RET_INT(This->getVolume())
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // SoundEffect._set(index, value)
 static SQInteger script_soundeffect__set(HSQUIRRELVM v)
 {
-    ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get string index
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    const SQChar* index = 0;
-    sq_getstring(v, 2, &index);
-
-    // scstrcmp is defined by squirrel
-    if (scstrcmp(index, _SC("volume")) == 0) {
-        SQInteger value;
-        if (sq_gettype(v, 3) != OT_INTEGER && sq_gettype(v, 3) != OT_FLOAT) {
-            return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-        }
-        sq_getinteger(v, 3, &value);
+    SETUP_SOUNDEFFECT_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "volume") == 0) {
+        GET_ARG_INT(2, value)
         This->setVolume(value);
     } else {
         // index not found
         sq_pushnull(v);
         return sq_throwobject(v);
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // SoundEffect._typeof()
 static SQInteger script_soundeffect__typeof(HSQUIRRELVM v)
 {
-    ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("SoundEffect"), -1);
-    return 1;
+    SETUP_SOUNDEFFECT_OBJECT()
+    RET_STRING("SoundEffect")
 }
 
 //-----------------------------------------------------------------
 // SoundEffect._tostring()
 static SQInteger script_soundeffect__tostring(HSQUIRRELVM v)
 {
-    ISoundEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_SOUNDEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("<SoundEffect instance>"), -1);
-    return 1;
+    SETUP_SOUNDEFFECT_OBJECT()
+    std::ostringstream oss;
+    oss << "<SoundEffect instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
@@ -5172,31 +3066,27 @@ bool IsSoundEffect(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-ISoundEffect* GetSoundEffect(HSQUIRRELVM v, SQInteger idx)
+void BindSoundEffect(ISoundEffect* soundeffect)
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_SOUNDEFFECT))) {
-        return (ISoundEffect*)p;
-    }
-    return 0;
+    assert(g_SoundEffectClass._type == OT_CLASS);
+    assert(soundeffect);
+    sq_pushobject(g_VM, g_SoundEffectClass); // push soundeffect class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop soundeffect class
+    sq_setreleasehook(g_VM, -1, script_soundeffect_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)soundeffect);
+    soundeffect->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-bool BindSoundEffect(HSQUIRRELVM v, ISoundEffect* soundeffect)
+ISoundEffect* GetSoundEffect(SQInteger idx)
 {
-    if (!soundeffect) {
-        return false;
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_SOUNDEFFECT))) {
+        return (ISoundEffect*)p;
     }
-    sq_pushobject(v, g_soundeffect_class); // push soundeffect class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop soundeffect class
-        return false;
-    }
-    sq_remove(v, -2); // pop soundeffect class
-    sq_setreleasehook(v, -1, script_soundeffect_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)soundeffect);
-    soundeffect->grab(); // grab a new reference
-    return true;
+    return 0;
 }
 
 /******************************************************************
@@ -5211,24 +3101,23 @@ bool BindSoundEffect(HSQUIRRELVM v, ISoundEffect* soundeffect)
 // UpdateInput()
 static SQInteger script_UpdateInput(HSQUIRRELVM v)
 {
-    input::UpdateInput();
-    return 0;
+    UpdateInput();
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // AreEventsPending()
 static SQInteger script_AreEventsPending(HSQUIRRELVM v)
 {
-    sq_pushbool(v, input::AreEventsPending());
-    return 1;
+    RET_BOOL(AreEventsPending())
 }
 
 //-----------------------------------------------------------------
 // GetEvent()
 static SQInteger script_GetEvent(HSQUIRRELVM v)
 {
-    input::Event event;
-    if (input::GetEvent(event)) {
+    Event event;
+    if (GetEvent(event)) {
         sq_newtable(v); // event
 
         sq_pushstring(v, _SC("type"), -1);
@@ -5236,21 +3125,21 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
         sq_newslot(v, -3);
 
         switch (event.type) {
-        case input::Event::KEY_DOWN:
-        case input::Event::KEY_UP:
+        case Event::KEY_DOWN:
+        case Event::KEY_UP:
             sq_pushstring(v, _SC("key"), -1);
             sq_pushinteger(v, event.key.key);
             sq_newslot(v, -3);
             break;
 
-        case input::Event::MOUSE_BUTTON_DOWN:
-        case input::Event::MOUSE_BUTTON_UP:
+        case Event::MOUSE_BUTTON_DOWN:
+        case Event::MOUSE_BUTTON_UP:
             sq_pushstring(v, _SC("mbutton"), -1);
             sq_pushinteger(v, event.mbutton.button);
             sq_newslot(v, -3);
             break;
 
-        case input::Event::MOUSE_MOTION:
+        case Event::MOUSE_MOTION:
             sq_pushstring(v, _SC("dx"), -1);
             sq_pushinteger(v, event.mmotion.dx);
             sq_newslot(v, -3);
@@ -5260,7 +3149,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3);
             break;
 
-        case input::Event::MOUSE_WHEEL_MOTION:
+        case Event::MOUSE_WHEEL_MOTION:
             sq_pushstring(v, _SC("dx"), -1);
             sq_pushinteger(v, event.mwheel.dx);
             sq_newslot(v, -3);
@@ -5270,8 +3159,8 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3);
             break;
 
-        case input::Event::JOY_BUTTON_DOWN:
-        case input::Event::JOY_BUTTON_UP:
+        case Event::JOY_BUTTON_DOWN:
+        case Event::JOY_BUTTON_UP:
             sq_pushstring(v, _SC("joy"), -1);
             sq_pushinteger(v, event.jbutton.joy);
             sq_newslot(v, -3);
@@ -5281,7 +3170,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3);
             break;
 
-        case input::Event::JOY_AXIS_MOTION:
+        case Event::JOY_AXIS_MOTION:
             sq_pushstring(v, _SC("joy"), -1);
             sq_pushinteger(v, event.jaxis.joy);
             sq_newslot(v, -3);
@@ -5295,7 +3184,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3);
             break;
 
-        case input::Event::JOY_HAT_MOTION:
+        case Event::JOY_HAT_MOTION:
             sq_pushstring(v, _SC("joy"), -1);
             sq_pushinteger(v, event.jhat.joy);
             sq_newslot(v, -3);
@@ -5309,12 +3198,12 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3);
             break;
 
-        case input::Event::APP_QUIT:
+        case Event::APP_QUIT:
             break;
 
         default:
             sq_poptop(v); // pop event table
-            return sq_throwerror(v, _SC("unrecognized event type"));
+            THROW_ERROR("Unrecognized event type")
         }
     } else {
         sq_pushnull(v);
@@ -5326,981 +3215,363 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
 // ClearEvents()
 static SQInteger script_ClearEvents(HSQUIRRELVM v)
 {
-    input::ClearEvents();
-    return 0;
+    ClearEvents();
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // IsKeyDown(key)
 static SQInteger script_IsKeyDown(HSQUIRRELVM v)
 {
-    // get key
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <key>"));
-    }
-    SQInteger key;
-    sq_getinteger(v, 2, &key);
-
-    sq_pushbool(v, input::IsKeyDown(key));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, key)
+    RET_BOOL(IsKeyDown(key))
 }
 
 //-----------------------------------------------------------------
 // GetMouseX()
 static SQInteger script_GetMouseX(HSQUIRRELVM v)
 {
-    sq_pushinteger(v, input::GetMouseX());
-    return 1;
+    RET_INT(GetMouseX())
 }
 
 //-----------------------------------------------------------------
 // GetMouseY()
 static SQInteger script_GetMouseY(HSQUIRRELVM v)
 {
-    sq_pushinteger(v, input::GetMouseY());
-    return 1;
+    RET_INT(GetMouseY())
 }
 
 //-----------------------------------------------------------------
 // IsMouseButtonDown(button)
 static SQInteger script_IsMouseButtonDown(HSQUIRRELVM v)
 {
-    // get button
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <button>"));
-    }
-    SQInteger button;
-    sq_getinteger(v, 2, &button);
-
-    sq_pushbool(v, input::IsMouseButtonDown(button));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, button)
+    RET_BOOL(IsMouseButtonDown(button))
 }
 
 //-----------------------------------------------------------------
 // GetNumJoysticks()
 static SQInteger script_GetNumJoysticks(HSQUIRRELVM v)
 {
-    sq_pushinteger(v, input::GetNumJoysticks());
-    return 1;
+    RET_INT(GetNumJoysticks())
 }
 
 //-----------------------------------------------------------------
 // GetJoystickName(joy)
 static SQInteger script_GetJoystickName(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    const char* joy_name = input::GetJoystickName(joy);
-    if (joy_name) {
-        sq_pushstring(v, joy_name, -1);
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    const char* name = GetJoystickName(joy);
+    if (name) {
+        RET_STRING(name)
     } else {
-        sq_pushnull(v);
+        RET_NULL()
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // GetNumJoystickButtons(joy)
 static SQInteger script_GetNumJoystickButtons(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    sq_pushinteger(v, input::GetNumJoystickButtons(joy));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    RET_INT(GetNumJoystickButtons(joy))
 }
 
 //-----------------------------------------------------------------
 // GetNumJoystickAxes(joy)
 static SQInteger script_GetNumJoystickAxes(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    sq_pushinteger(v, input::GetNumJoystickAxes(joy));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    RET_INT(GetNumJoystickAxes(joy))
 }
 
 //-----------------------------------------------------------------
 // GetNumJoystickHats(joy)
 static SQInteger script_GetNumJoystickHats(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    sq_pushinteger(v, input::GetNumJoystickHats(joy));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    RET_INT(GetNumJoystickHats(joy))
 }
 
 //-----------------------------------------------------------------
 // IsJoystickButtonDown(joy, button)
 static SQInteger script_IsJoystickButtonDown(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get button
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <button>"));
-    }
-    SQInteger button;
-    sq_getinteger(v, 3, &button);
-
-    sq_pushbool(v, input::IsJoystickButtonDown(joy, button));
-    return 1;
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, button)
+    RET_BOOL(IsJoystickButtonDown(joy, button))
 }
 
 //-----------------------------------------------------------------
-// GetJoystickAxis(joy, button)
+// GetJoystickAxis(joy, axis)
 static SQInteger script_GetJoystickAxis(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get axis
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <axis>"));
-    }
-    SQInteger axis;
-    sq_getinteger(v, 3, &axis);
-
-    sq_pushinteger(v, input::GetJoystickAxis(joy, axis));
-    return 1;
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, axis)
+    RET_INT(GetJoystickAxis(joy, axis))
 }
 
 //-----------------------------------------------------------------
 // GetJoystickHat(joy, hat)
 static SQInteger script_GetJoystickHat(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get hat
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <hat>"));
-    }
-    SQInteger hat;
-    sq_getinteger(v, 3, &hat);
-
-    sq_pushinteger(v, input::GetJoystickHat(joy, hat));
-    return 1;
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, hat)
+    RET_INT(GetJoystickHat(joy, hat))
 }
 
 //-----------------------------------------------------------------
 // HasJoystickForceFeedback(joy)
 static SQInteger script_HasJoystickForceFeedback(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    sq_pushbool(v, input::HasJoystickForceFeedback(joy));
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// IsJoystickForceEffectSupported(joy, effect)
-static SQInteger script_IsJoystickForceEffectSupported(HSQUIRRELVM v)
-{
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    SQInteger effect;
-    sq_getinteger(v, 3, &effect);
-
-    sq_pushbool(v, input::IsJoystickForceEffectSupported(joy, effect));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    RET_BOOL(HasJoystickForceFeedback(joy))
 }
 
 //-----------------------------------------------------------------
 // UploadJoystickForceEffect(joy, effect)
 static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_FORCEEFFECT(2, effect)
+    int effect_id = UploadJoystickForceEffect(joy, *effect);
+    if (effect_id < 0) {
+        THROW_ERROR("Could not upload joystick force effect")
     }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (!IsForceEffect(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    input::ForceEffect* effect = GetForceEffect(v, 3);
-    assert(effect);
-
-    sq_pushinteger(v, input::UploadJoystickForceEffect(joy, *effect));
-    return 1;
+    RET_INT(effect_id)
 }
 
 //-----------------------------------------------------------------
 // PlayJoystickForceEffect(joy, effect [, times])
 static SQInteger script_PlayJoystickForceEffect(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    CHECK_MIN_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, effect)
+    GET_OPTARG_INT(3, times, 1)
+    if (!PlayJoystickForceEffect(joy, effect, times)) {
+        THROW_ERROR("Could not play joystick force effect")
     }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    SQInteger effect;
-    sq_getinteger(v, 3, &effect);
-
-    // get optional times
-    SQInteger times = 1;
-    if (sq_gettop(v) >= 4) {
-        if (sq_gettype(v, 4) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <times>"));
-        }
-        sq_getinteger(v, 4, &times);
-    }
-
-    sq_pushbool(v, input::PlayJoystickForceEffect(joy, effect, times));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // UpdateJoystickForceEffect(joy, effect, new_data)
 static SQInteger script_UpdateJoystickForceEffect(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, effect)
+    GET_ARG_FORCEEFFECT(3, new_data)
+    int effect_id = UpdateJoystickForceEffect(joy, effect, *new_data);
+    if (effect_id < 0) {
+        THROW_ERROR("Could not update joystick force effect")
     }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    SQInteger effect;
-    sq_getinteger(v, 3, &effect);
-
-    // get new_data
-    if (!IsForceEffect(v, 4)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <new_data>"));
-    }
-    input::ForceEffect* new_data = GetForceEffect(v, 4);
-    assert(new_data);
-
-    sq_pushinteger(v, input::UpdateJoystickForceEffect(joy, effect, *new_data));
-    return 1;
+    RET_INT(effect_id)
 }
 
 //-----------------------------------------------------------------
 // StopJoystickForceEffect(joy, effect)
 static SQInteger script_StopJoystickForceEffect(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, effect)
+    if (!StopJoystickForceEffect(joy, effect)) {
+        THROW_ERROR("Could not stop joystick force effect")
     }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    SQInteger effect;
-    sq_getinteger(v, 3, &effect);
-
-    sq_pushbool(v, input::StopJoystickForceEffect(joy, effect));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // StopAllJoystickForceEffects(joy)
 static SQInteger script_StopAllJoystickForceEffects(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
-    }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    sq_pushbool(v, input::StopAllJoystickForceEffects(joy));
-    return 1;
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, joy)
+    StopAllJoystickForceEffects(joy);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // RemoveJoystickForceEffect(joy, effect)
 static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
 {
-    // get joy
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <joy>"));
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, joy)
+    GET_ARG_INT(2, effect)
+    if (!RemoveJoystickForceEffect(joy, effect)) {
+        THROW_ERROR("Could not remove joystick force effect")
     }
-    SQInteger joy;
-    sq_getinteger(v, 2, &joy);
-
-    // get effect
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    SQInteger effect;
-    sq_getinteger(v, 3, &effect);
-
-    input::RemoveJoystickForceEffect(joy, effect);
-    return 0;
+    RET_VOID()
 }
-
-
-    union ForceEffect {
-
-        static const int INFINITY = 0x7FFFFFFF; // (2^31)-1 highest possible 32-bit signed integer number
-
-        enum Type {
-            CONSTANT = 0, // constant effect
-            RAMP,         // ramp effect
-            SINE,         // periodic effect
-            SQUARE,       // periodic effect
-            TRIANGLE,     // periodic effect
-            SAWTOOTHUP,   // periodic effect
-            SAWTOOTHDOWN, // periodic effect
-        };
-
-        struct Direction {
-            enum Type {
-                CARTESIAN = 0, // cartesian direction using the x, y, and z axes
-                POLAR,         // polar direction using an angle
-            };
-
-            int type;      // the type of the force direction encoding
-            int dir[3]; // encoded direction parameters
-        };
-
-        // the type of the force effect
-        int type;
-
-        // a constant force effect
-        struct {
-            int type;                  // ForceEffect::CONSTANT
-            Direction direction;       // direction of the force
-            u32 length;                // effect duration
-            u16 delay;                 // delay before playing the effect (again)
-            u16 attack_length;
-            u16 attack_level;
-            u16 fade_length;
-            u16 fade_level;
-            i16 level;                 // effect strength
-        } constant;
-
-        // a ramp force effect
-        struct {
-            int type;                  // ForceEffect::RAMP
-            Direction direction;       // direction of the force
-            u32 length;                // effect duration
-            u16 delay;                 // delay before playing the effect (again)
-            u16 attack_length;
-            u16 attack_level;
-            u16 fade_length;
-            u16 fade_level;
-            i16 start;
-            i16 end;
-        } ramp;
-
-        // a periodic force effect
-        struct {
-            int type;                  // ForceEffect::PERIODIC
-            Direction direction;       // direction of the force
-            u32 length;                // effect duration
-            u16 delay;                 // delay before playing the effect (again)
-            u16 attack_length;
-            u16 attack_level;
-            u16 fade_length;
-            u16 fade_level;
-            u16 period;
-            i16 magnitude;
-            i16 offset;
-            u16 phase;
-        } periodic;
-    };
 
 /************************** FORCEEFFECT ***************************/
 
+#define SETUP_FORCEEFFECT_OBJECT() \
+    ForceEffect* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) { \
+        THROW_ERROR("Invalid type of environment object, expected a ForceEffect instance") \
+    }
+
 //-----------------------------------------------------------------
-// ForceEffect(type)
+// ForceEffect()
 static SQInteger script_forceeffect_constructor(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get type
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    SQInteger type;
-    sq_getinteger(v, 2, &type);
-
-    if (type != ForceEffect::CONSTANT   &&
-        type != ForceEffect::RAMP       &&
-        type != ForceEffect::SINE       &&
-        type != ForceEffect::SQUARE     &&
-        type != ForceEffect::TRIANGLE   &&
-        type != ForceEffect::SAWTOOTHUP &&
-        type != ForceEffect::SAWTOOTHDOWN)
-    {
-        return sq_throwerror(v, _SC("invalid parameter <type>"));
-    }
-
+    SETUP_FORCEEFFECT_OBJECT()
     memset(This, 0, sizeof(ForceEffect));
-    This->type = type;
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // ForceEffect._get(index)
 static SQInteger script_forceeffect__get(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_FORCEEFFECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "direction") == 0) {
+        RET_INT(This->direction)
+    } else if (strcmp(index, "duration") == 0) {
+        RET_INT(This->duration)
+    } else if (strcmp(index, "start") == 0) {
+        RET_INT(This->start)
+    } else if (strcmp(index, "end") == 0) {
+        RET_INT(This->end)
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
     }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    switch (effect->type) {
-    case ForceEffect::CONSTANT:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            sq_pushinteger(v, This->constant.direction.type);
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            sq_pushinteger(v, This->constant.direction.dir[0]);
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            sq_pushinteger(v, This->constant.direction.dir[1]);
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            sq_pushinteger(v, This->constant.direction.dir[2]);
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            sq_pushinteger(v, This->constant.length);
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            sq_pushinteger(v, This->constant.delay);
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            sq_pushinteger(v, This->constant.attack_length);
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            sq_pushinteger(v, This->constant.attack_level);
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            sq_pushinteger(v, This->constant.fade_length);
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            sq_pushinteger(v, This->constant.fade_level);
-        } else if (scstrcmp(index, _SC("level")) == 0) {
-            sq_pushinteger(v, This->constant.level);
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    case ForceEffect::RAMP:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            sq_pushinteger(v, This->ramp.direction.type);
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            sq_pushinteger(v, This->ramp.direction.dir[0]);
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            sq_pushinteger(v, This->ramp.direction.dir[1]);
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            sq_pushinteger(v, This->ramp.direction.dir[2]);
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            sq_pushinteger(v, This->ramp.length);
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            sq_pushinteger(v, This->ramp.delay);
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            sq_pushinteger(v, This->ramp.attack_length);
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            sq_pushinteger(v, This->ramp.attack_level);
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            sq_pushinteger(v, This->ramp.fade_length);
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            sq_pushinteger(v, This->ramp.fade_level);
-        } else if (scstrcmp(index, _SC("start")) == 0) {
-            sq_pushinteger(v, This->ramp.start);
-        } else if (scstrcmp(index, _SC("end")) == 0) {
-            sq_pushinteger(v, This->ramp.end);
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    case ForceEffect::SINE:
-    case ForceEffect::SQUARE:
-    case ForceEffect::TRIANGLE:
-    case ForceEffect::SAWTOOTHUP:
-    case ForceEffect::SAWTOOTHDOWN:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            sq_pushinteger(v, This->periodic.direction.type);
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            sq_pushinteger(v, This->periodic.direction.dir[0]);
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            sq_pushinteger(v, This->periodic.direction.dir[1]);
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            sq_pushinteger(v, This->periodic.direction.dir[2]);
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            sq_pushinteger(v, This->periodic.length);
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            sq_pushinteger(v, This->periodic.delay);
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            sq_pushinteger(v, This->periodic.attack_length);
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            sq_pushinteger(v, This->periodic.attack_level);
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            sq_pushinteger(v, This->periodic.fade_length);
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            sq_pushinteger(v, This->periodic.fade_level);
-        } else if (scstrcmp(index, _SC("period")) == 0) {
-            sq_pushinteger(v, This->periodic.period);
-        } else if (scstrcmp(index, _SC("magnitude")) == 0) {
-            sq_pushinteger(v, This->periodic.magnitude);
-        } else if (scstrcmp(index, _SC("offset")) == 0) {
-            sq_pushinteger(v, This->periodic.offset);
-        } else if (scstrcmp(index, _SC("phase")) == 0) {
-            sq_pushinteger(v, This->periodic.phase);
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    default:
-        return sq_throwerror(v, _SC("invalid force effect"));
-    }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // ForceEffect._set(index, value)
 static SQInteger script_forceeffect__set(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_FORCEEFFECT_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, index)
+    if (strcmp(index, "direction") == 0) {
+        GET_ARG_INT(2, value)
+        This->direction = value;
+    } else if (strcmp(index, "duration") == 0) {
+        GET_ARG_INT(2, value)
+        This->duration = value;
+    } else if (strcmp(index, "start") == 0) {
+        GET_ARG_INT(2, value)
+        This->start = value;
+    } else if (strcmp(index, "end") == 0) {
+        GET_ARG_INT(2, value)
+        This->end = value;
+    } else {
+        // index not found
+        sq_pushnull(v);
+        return sq_throwobject(v);
     }
-    assert(This);
-
-    // get index
-    const SQChar* index = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <index>"));
-    }
-    sq_getstring(v, 2, &index);
-
-    // get value
-    if (sq_gettype(v, 3) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <value>"));
-    }
-    SQInteger value;
-    sq_getstring(v, 3, &value);
-
-    switch (effect->type) {
-    case ForceEffect::CONSTANT:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            This->constant.direction.type = value;
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            This->constant.direction.dir[0] = value;
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            This->constant.direction.dir[1] = value;
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            This->constant.direction.dir[2] = value;
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            This->constant.length = value;
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            This->constant.delay = value;
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            This->constant.attack_length = value;
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            This->constant.attack_level = value;
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            This->constant.fade_length = value;
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            This->constant.fade_level = value;
-        } else if (scstrcmp(index, _SC("level")) == 0) {
-            This->constant.level = value;
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    case ForceEffect::RAMP:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            This->ramp.direction.type = value;
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            This->ramp.direction.dir[0] = value;
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            This->ramp.direction.dir[1] = value;
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            This->ramp.direction.dir[2] = value;
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            This->ramp.length = value;
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            This->ramp.delay = value;
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            This->ramp.attack_length = value;
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            This->ramp.attack_level = value;
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            This->ramp.fade_length = value;
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            This->ramp.fade_level = value;
-        } else if (scstrcmp(index, _SC("start")) == 0) {
-            This->ramp.start = value;
-        } else if (scstrcmp(index, _SC("end")) == 0) {
-            This->ramp.end = value;
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    case ForceEffect::SINE:
-    case ForceEffect::SQUARE:
-    case ForceEffect::TRIANGLE:
-    case ForceEffect::SAWTOOTHUP:
-    case ForceEffect::SAWTOOTHDOWN:
-        // scstrcmp is defined by squirrel
-        if (scstrcmp(index, _SC("dir_type")) == 0) {
-            This->periodic.direction.type = value;
-        } else if (scstrcmp(index, _SC("dir_0")) == 0) {
-            This->periodic.direction.dir[0] = value;
-        } else if (scstrcmp(index, _SC("dir_1")) == 0) {
-            This->periodic.direction.dir[1] = value;
-        } else if (scstrcmp(index, _SC("dir_2")) == 0) {
-            This->periodic.direction.dir[2] = value;
-        } else if (scstrcmp(index, _SC("length")) == 0) {
-            This->periodic.length = value;
-        } else if (scstrcmp(index, _SC("delay")) == 0) {
-            This->periodic.delay = value;
-        } else if (scstrcmp(index, _SC("attack_length")) == 0) {
-            This->periodic.attack_length = value;
-        } else if (scstrcmp(index, _SC("attack_level")) == 0) {
-            This->periodic.attack_level = value;
-        } else if (scstrcmp(index, _SC("fade_length")) == 0) {
-            This->periodic.fade_length = value;
-        } else if (scstrcmp(index, _SC("fade_level")) == 0) {
-            This->periodic.fade_level = value;
-        } else if (scstrcmp(index, _SC("period")) == 0) {
-            This->periodic.period = value;
-        } else if (scstrcmp(index, _SC("magnitude")) == 0) {
-            This->periodic.magnitude = value;
-        } else if (scstrcmp(index, _SC("offset")) == 0) {
-            This->periodic.offset = value;
-        } else if (scstrcmp(index, _SC("phase")) == 0) {
-            This->periodic.phase = value;
-        } else {
-            // index not found
-            sq_pushnull(v);
-            return sq_throwobject(v);
-        }
-        break;
-    default:
-        return sq_throwerror(v, _SC("invalid force effect"));
-    }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // ForceEffect._typeof()
 static SQInteger script_forceeffect__typeof(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("ForceEffect"), -1);
-    return 1;
+    SETUP_FORCEEFFECT_OBJECT()
+    RET_STRING("ForceEffect")
 }
 
 //-----------------------------------------------------------------
-// ForceEffect._cloned(effect)
+// ForceEffect._cloned(original)
 static SQInteger script_forceeffect__cloned(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    // get original effect
-    if (!IsForceEffect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    ForceEffect* orig = GetForceEffect(v, 2);
-    assert(orig);
-
-    // clone effect
-    memcpy(This, orig, sizeof(ForceEffect));
-    return 0;
+    SETUP_FORCEEFFECT_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_FORCEEFFECT(1, original)
+    memcpy(This, original, sizeof(ForceEffect));
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // ForceEffect._tostring()
 static SQInteger script_forceeffect__tostring(HSQUIRRELVM v)
 {
-    ForceEffect* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_FORCEEFFECT_OBJECT()
     std::ostringstream oss;
-    oss << "<ForceEffect instance>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<ForceEffect instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-// ForceEffect._dump(effect, stream)
+// ForceEffect._dump(instance, stream)
 static SQInteger script_forceeffect__dump(HSQUIRRELVM v)
 {
-    // get effect
-    if (!IsForceEffect(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <effect>"));
-    }
-    ForceEffect* effect = GetForceEffect(v, 2);
-    assert(effect);
+    CHECK_NARGS(2)
+    GET_ARG_FORCEEFFECT(1, instance)
+    GET_ARG_STREAM(2, stream)
 
-    // get stream
-    if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
-    if (!stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+    if (!stream->isOpen() || !stream->isWriteable()) {
+        THROW_ERROR("Invalid output stream")
     }
 
     // write class name
     const char* class_name = "ForceEffect";
     int class_name_size = strlen(class_name);
-    if (!writeu32l(stream, (u32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
+    if (!writei32l(stream, (i32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
         goto throw_write_error;
     }
 
-    // write type
-    if (!writeu32l(stream, (u32)effect->type)) {
+    // write instance
+    if (!writei32l(stream, instance->direction) ||
+        !writei32l(stream, instance->duration)  ||
+        !writei32l(stream, instance->start)     ||
+        !writei32l(stream, instance->end))
+    {
         goto throw_write_error;
     }
 
-    // write data
-    switch (effect->type) {
-    case ForceEffect::CONSTANT:
-        if (!writeu32l(stream, (u32)effect->constant.direction.type)   ||
-            !writeu32l(stream, (u32)effect->constant.direction.dir[0]) ||
-            !writeu32l(stream, (u32)effect->constant.direction.dir[1]) ||
-            !writeu32l(stream, (u32)effect->constant.direction.dir[2]) ||
-            !writeu32l(stream, (u32)effect->constant.length)           ||
-            !writeu16l(stream, (u16)effect->constant.delay)            ||
-            !writeu16l(stream, (u16)effect->constant.attack_length)    ||
-            !writeu16l(stream, (u16)effect->constant.attack_level)     ||
-            !writeu16l(stream, (u16)effect->constant.fade_length)      ||
-            !writeu16l(stream, (u16)effect->constant.fade_level)       ||
-            !writeu16l(stream, (u16)effect->constant.level))
-        {
-            goto throw_write_error;
-        }
-        break;
-    case ForceEffect::RAMP:
-        if (!writeu32l(stream, (u32)effect->ramp.direction.type)   ||
-            !writeu32l(stream, (u32)effect->ramp.direction.dir[0]) ||
-            !writeu32l(stream, (u32)effect->ramp.direction.dir[1]) ||
-            !writeu32l(stream, (u32)effect->ramp.direction.dir[2]) ||
-            !writeu32l(stream, (u32)effect->ramp.length)           ||
-            !writeu16l(stream, (u16)effect->ramp.delay)            ||
-            !writeu16l(stream, (u16)effect->ramp.attack_length)    ||
-            !writeu16l(stream, (u16)effect->ramp.attack_level)     ||
-            !writeu16l(stream, (u16)effect->ramp.fade_length)      ||
-            !writeu16l(stream, (u16)effect->ramp.fade_level)       ||
-            !writeu16l(stream, (u16)effect->ramp.start)            ||
-            !writeu16l(stream, (u16)effect->ramp.end))
-        {
-            goto throw_write_error;
-        }
-        break;
-    case ForceEffect::SINE:
-    case ForceEffect::SQUARE:
-    case ForceEffect::TRIANGLE:
-    case ForceEffect::SAWTOOTHUP:
-    case ForceEffect::SAWTOOTHDOWN:
-        if (!writeu32l(stream, (u32)effect->periodic.direction.type)   ||
-            !writeu32l(stream, (u32)effect->periodic.direction.dir[0]) ||
-            !writeu32l(stream, (u32)effect->periodic.direction.dir[1]) ||
-            !writeu32l(stream, (u32)effect->periodic.direction.dir[2]) ||
-            !writeu32l(stream, (u32)effect->periodic.length)           ||
-            !writeu16l(stream, (u16)effect->periodic.delay)            ||
-            !writeu16l(stream, (u16)effect->periodic.attack_length)    ||
-            !writeu16l(stream, (u16)effect->periodic.attack_level)     ||
-            !writeu16l(stream, (u16)effect->periodic.fade_length)      ||
-            !writeu16l(stream, (u16)effect->periodic.fade_level)       ||
-            !writeu16l(stream, (u16)effect->periodic.period)           ||
-            !writeu16l(stream, (u16)effect->periodic.magnitude)        ||
-            !writeu16l(stream, (u16)effect->periodic.offset)           ||
-            !writeu16l(stream, (u16)effect->periodic.phase))
-        {
-            goto throw_write_error;
-        }
-        break;
-    default:
-        return sq_throwerror(v, _SC("invalid force effect"));
-    }
-    return 0;
+    RET_VOID()
 
 throw_write_error:
-    return sq_throwerror(v, _SC("write error"));
+    THROW_ERROR("Write error")
 }
 
 //-----------------------------------------------------------------
 // ForceEffect._load(stream)
 static SQInteger script_forceeffect__load(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid input stream")
     }
 
-    ForceEffect effect;
-
-    // read type
-    if (!readu32l(stream, (u32)effect.type)) {
+    // read instance
+    ForceEffect instance;
+    if (!readi32l(stream, instance.direction) ||
+        !readi32l(stream, instance.duration)  ||
+        !readi32l(stream, instance.start)     ||
+        !readi32l(stream, instance.end))
+    {
         goto throw_read_error;
     }
 
-    // read data
-    switch (effect.type) {
-    case ForceEffect::CONSTANT:
-        if (!readu32l(stream, (u32)effect.constant.direction.type)   ||
-            !readu32l(stream, (u32)effect.constant.direction.dir[0]) ||
-            !readu32l(stream, (u32)effect.constant.direction.dir[1]) ||
-            !readu32l(stream, (u32)effect.constant.direction.dir[2]) ||
-            !readu32l(stream, (u32)effect.constant.length)           ||
-            !readu16l(stream, (u16)effect.constant.delay)            ||
-            !readu16l(stream, (u16)effect.constant.attack_length)    ||
-            !readu16l(stream, (u16)effect.constant.attack_level)     ||
-            !readu16l(stream, (u16)effect.constant.fade_length)      ||
-            !readu16l(stream, (u16)effect.constant.fade_level)       ||
-            !readu16l(stream, (u16)effect.constant.level))
-        {
-            goto throw_read_error;
-        }
-        break;
-    case ForceEffect::RAMP:
-        if (!readu32l(stream, (u32)effect.ramp.direction.type)   ||
-            !readu32l(stream, (u32)effect.ramp.direction.dir[0]) ||
-            !readu32l(stream, (u32)effect.ramp.direction.dir[1]) ||
-            !readu32l(stream, (u32)effect.ramp.direction.dir[2]) ||
-            !readu32l(stream, (u32)effect.ramp.length)           ||
-            !readu16l(stream, (u16)effect.ramp.delay)            ||
-            !readu16l(stream, (u16)effect.ramp.attack_length)    ||
-            !readu16l(stream, (u16)effect.ramp.attack_level)     ||
-            !readu16l(stream, (u16)effect.ramp.fade_length)      ||
-            !readu16l(stream, (u16)effect.ramp.fade_level)       ||
-            !readu16l(stream, (u16)effect.ramp.start)            ||
-            !readu16l(stream, (u16)effect.ramp.end))
-        {
-            goto throw_read_error;
-        }
-        break;
-    case ForceEffect::SINE:
-    case ForceEffect::SQUARE:
-    case ForceEffect::TRIANGLE:
-    case ForceEffect::SAWTOOTHUP:
-    case ForceEffect::SAWTOOTHDOWN:
-        if (!readu32l(stream, (u32)effect.periodic.direction.type)   ||
-            !readu32l(stream, (u32)effect.periodic.direction.dir[0]) ||
-            !readu32l(stream, (u32)effect.periodic.direction.dir[1]) ||
-            !readu32l(stream, (u32)effect.periodic.direction.dir[2]) ||
-            !readu32l(stream, (u32)effect.periodic.length)           ||
-            !readu16l(stream, (u16)effect.periodic.delay)            ||
-            !readu16l(stream, (u16)effect.periodic.attack_length)    ||
-            !readu16l(stream, (u16)effect.periodic.attack_level)     ||
-            !readu16l(stream, (u16)effect.periodic.fade_length)      ||
-            !readu16l(stream, (u16)effect.periodic.fade_level)       ||
-            !readu16l(stream, (u16)effect.periodic.period)           ||
-            !readu16l(stream, (u16)effect.periodic.magnitude)        ||
-            !readu16l(stream, (u16)effect.periodic.offset)           ||
-            !readu16l(stream, (u16)effect.periodic.phase))
-        {
-            goto throw_read_error;
-        }
-        break;
-    default:
-        return sq_throwerror(v, _SC("invalid force effect"));
-    }
-
-    if (!BindForceEffect(v, effect) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_FORCEEFFECT(instance)
 
 throw_read_error:
-    return sq_throwerror(v, _SC("read error"));
+    THROW_ERROR("Read error")
 }
 
 //-----------------------------------------------------------------
@@ -6315,29 +3586,27 @@ bool IsForceEffect(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-ForceEffect* GetForceEffect(HSQUIRRELVM v, SQInteger idx)
+void BindForceEffect(const ForceEffect& effect)
 {
+    assert(g_ForceEffectClass._type == OT_CLASS);
+    sq_pushobject(g_VM, g_ForceEffectClass); // push forceeffect class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop forceeffect class
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_FORCEEFFECT))) {
-        return (ForceEffect*)p;
-    }
-    return 0;
+    sq_getinstanceup(g_VM, -1, &p, 0);
+    assert(p);
+    memcpy(p, &effect, sizeof(ForceEffect));
 }
 
 //-----------------------------------------------------------------
-bool BindForceEffect(HSQUIRRELVM v, const ForceEffect& effect)
+ForceEffect* GetForceEffect(SQInteger idx)
 {
-    sq_pushobject(v, g_forceeffect_class); // push forceeffect class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop forceeffect class
-        return false;
-    }
-    sq_remove(v, -2); // pop forceeffect class
     SQUserPointer p = 0;
-    sq_getinstanceup(v, -1, &p, 0);
-    assert(p);
-    memcpy(p, &effect, sizeof(ForceEffect));
-    return true;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_FORCEEFFECT))) {
+        return (ForceEffect*)p;
+    }
+    return 0;
 }
 
 /******************************************************************
@@ -6352,164 +3621,109 @@ bool BindForceEffect(HSQUIRRELVM v, const ForceEffect& effect)
 // GetTime()
 static SQInteger script_GetTime(HSQUIRRELVM v)
 {
-    sq_pushinteger(system::GetTime());
-    return 1;
+    RET_INT(GetTime())
 }
 
 //-----------------------------------------------------------------
 // GetTicks()
 static SQInteger script_GetTicks(HSQUIRRELVM v)
 {
-    sq_pushinteger(system::GetTicks());
-    return 1;
+    RET_INT(GetTicks())
 }
 
 //-----------------------------------------------------------------
 // GetRandom()
 static SQInteger script_GetRandom(HSQUIRRELVM v)
 {
-    sq_pushinteger(system::GetRandom());
-    return 1;
+    RET_INT(GetRandom())
 }
 
 //-----------------------------------------------------------------
-// Sleep(millis)
+// Sleep(ms)
 static SQInteger script_Sleep(HSQUIRRELVM v)
 {
-    // get millis
-    SQInteger millis;
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <millis>"));
-    }
-    sq_getinteger(v, 2, &millis);
-
-    system::Sleep(millis);
-    return 0;
+    CHECK_NARGS(1)
+    GET_ARG_INT(ms)
+    Sleep(ms);
+    RET_VOID()
 }
 
 /******************************************************************
  *                                                                *
- *                             CRYPT                              *
+ *                          ENCRYPTION                            *
  *                                                                *
  ******************************************************************/
 
 /*********************** GLOBAL FUNCTIONS *************************/
 
 //-----------------------------------------------------------------
-// Base64Encode(in [, out])
+// Base64Encode(data [, out])
 static SQInteger script_Base64Encode(HSQUIRRELVM v)
 {
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    GET_OPTARG_BLOB(2, out)
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    if (sq_gettop(v) >= 3) {
-        if (!IsBlob(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+    if (out) {
+        if (!Base64Encode(data->getBuffer(), data->getSize(), out)) {
+            THROW_ERROR("Base64 encoding failed")
         }
-        Blob* out = GetBlob(v, 3);
-        assert(out);
-
-        if (!crypt::Base64Encode(in->getBuffer(), in->getSize(), out)) {
-            return sq_throwerror(v, _SC("base64 encoding failed"));
-        }
-
-        sq_push(v, 3);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create();
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create();
+        if (!Base64Encode(data->getBuffer(), data->getSize(), blob.get())) {
+            THROW_ERROR("Base64 encoding failed")
         }
-
-        if (!crypt::Base64Encode(in->getBuffer(), in->getSize(), out.get())) {
-            return sq_throwerror(v, _SC("base64 encoding failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
-// Base64Decode(in [, out])
+// Base64Decode(data [, out])
 static SQInteger script_Base64Decode(HSQUIRRELVM v)
 {
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    GET_OPTARG_BLOB(2, out)
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    if (sq_gettop(v) >= 3) {
-        if (!IsBlob(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+    if (out) {
+        if (!Base64Decode(data->getBuffer(), data->getSize(), out)) {
+            THROW_ERROR("base64 encoding failed")
         }
-        Blob* out = GetBlob(v, 3);
-        assert(out);
-
-        if (!crypt::Base64Decode(in->getBuffer(), in->getSize(), out)) {
-            return sq_throwerror(v, _SC("base64 encoding failed"));
-        }
-
-        sq_push(v, 3);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create();
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create();
+        if (!Base64Decode(data->getBuffer(), data->getSize(), blob.get())) {
+            THROW_ERROR("base64 decoding failed")
         }
-
-        if (!crypt::Base64Decode(in->getBuffer(), in->getSize(), out.get())) {
-            return sq_throwerror(v, _SC("base64 decoding failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
-// ComputeCRC32(in [, in_crc32 = 0])
+// ComputeCRC32(data [, in_crc32 = 0])
 static SQInteger script_ComputeCRC32(HSQUIRRELVM v)
 {
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    GET_OPTARG_INT(2, in_crc32, 0)
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    SQInteger in_crc32 = 0;
-    if (sq_gettop(v) >= 3) {
-        if (sq_gettype(v, 3) != OT_INTEGER) {
-            return sq_throwerror(v, _SC("invalid type of parameter <in_crc32>"));
-        }
-        sq_getinteger(v, 3, &in_crc32);
-    }
-
-    sq_pushinteger(v, crypt::ComputeCRC32(in->getBuffer(), in->getSize(), in_crc32));
-    return 1;
+    RET_INT(ComputeCRC32(data->getBuffer(), data->getSize(), in_crc32))
 }
 
 /**************************** CIPHER ******************************/
+
+#define SETUP_CIPHER_OBJECT() \
+    ICipher* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Cipher instance") \
+    }
 
 //-----------------------------------------------------------------
 static SQInteger script_cipher_destructor(SQUserPointer p, SQInteger size)
@@ -6520,238 +3734,126 @@ static SQInteger script_cipher_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Cipher(type)
-static SQInteger script_cipher_constructor(HSQUIRRELVM v)
+// Cipher.AES()
+static SQInteger script_cipher_AES(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Cipher instances
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get type
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    SQInteger type;
-    sq_getinteger(v, 2);
-
-    This = crypt::CreateCipher(type);
-    if (!This) {
-        return sq_throwerror(v, _SC("failed to create cipher"));
-    }
-    sq_setinstanceup(v, 1, (SQUserPointer)This);
-    sq_setreleasehook(v, 1, script_cipher_destructor);
-    return 0;
+    CipherPtr cipher = CreateAESCipher();
+    RET_CIPHER(cipher.get())
 }
 
 //-----------------------------------------------------------------
-// Cipher.init(key)
+// Cipher.Blowfish()
+static SQInteger script_cipher_Blowfish(HSQUIRRELVM v)
+{
+    CipherPtr cipher = CreateBlowfishCipher();
+    RET_CIPHER(cipher.get())
+}
+
+//-----------------------------------------------------------------
+// Cipher.Twofish()
+static SQInteger script_cipher_Twofish(HSQUIRRELVM v)
+{
+    CipherPtr cipher = CreateTwofishCipher();
+    RET_CIPHER(cipher.get())
+}
+
+//-----------------------------------------------------------------
+// Cipher.init(key, iv)
 static SQInteger script_cipher_init(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_CIPHER_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_BLOB(1, key)
+    GET_ARG_BLOB(2, iv)
+    if (key->getSize() == 0) {
+        THROW_ERROR("Empty key")
     }
-    assert(This);
-
-    // get key
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <key>"));
+    if (iv->getSize() == 0) {
+        THROW_ERROR("Empty IV")
     }
-    Blob* key = GetBlob(v, 2);
-    assert(key);
-    if (key->getSize() != 32) {
-        return sq_throwerror(v, _SC("invalid parameter <key>"));
+    if (!This->init(key->getBuffer(), key->getSize(), iv->getBuffer(), iv->getSize())) {
+        THROW_ERROR("Initialization failed")
     }
-
-    sq_pushbool(v, This->init(key->getBuffer()));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Cipher.isInitialized()
 static SQInteger script_cipher_isInitialized(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isInitialized());
-    return 1;
+    SETUP_CIPHER_OBJECT()
+    RET_BOOL(This->isInitialized())
 }
 
 //-----------------------------------------------------------------
-// Cipher.getType()
-static SQInteger script_cipher_getType(HSQUIRRELVM v)
-{
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getType());
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Cipher.getIV()
-static SQInteger script_cipher_getIV(HSQUIRRELVM v)
-{
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    BlobPtr iv = Blob::Create();
-    if (!iv || !This->getIV(iv)) {
-        return sq_throwerror(v, _SC("failed to get IV"));
-    }
-    if (!BindBlob(v, iv.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Cipher.encrypt(in [, out])
+// Cipher.encrypt(pt [, out])
 static SQInteger script_cipher_encrypt(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_CIPHER_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, pt)
+    GET_OPTARG_BLOB(2, out)
+    if (pt->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    assert(This);
-
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
-    }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    if (sq_gettop(v) >= 3) {
-        if (!IsBlob(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+    if (out) {
+        out->resize(pt->getSize());
+        if (!This->encrypt(pt->getBuffer(), out->getBuffer(), pt->getSize())) {
+            THROW_ERROR("Encryption failed")
         }
-        Blob* out = GetBlob(v, 3);
-        assert(out);
-        if (out->getSize() != in->getSize() && !out->resize(in->getSize())) {
-            return sq_throwerror(v, _SC("out of memory"));
-        }
-
-        if (!This->encrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
-            return sq_throwerror(v, _SC("encryption failed"));
-        }
-
-        sq_push(v, 3);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create(in->getSize());
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create(pt->getSize());
+        if (!This->encrypt(pt->getBuffer(), blob->getBuffer(), pt->getSize())) {
+            THROW_ERROR("Encryption failed")
         }
-
-        if (!This->encrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
-            return sq_throwerror(v, _SC("encryption failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
-// Cipher.decrypt(in [, out])
+// Cipher.decrypt(ct [, out])
 static SQInteger script_cipher_decrypt(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_CIPHER_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, ct)
+    GET_OPTARG_BLOB(2, out)
+    if (ct->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    assert(This);
-
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
-    }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    if (sq_gettop(v) >= 3) {
-        if (!IsBlob(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+    if (out) {
+        out->resize(ct->getSize());
+        if (!This->decrypt(ct->getBuffer(), out->getBuffer(), ct->getSize())) {
+            THROW_ERROR("Decryption failed")
         }
-        Blob* out = GetBlob(v, 3);
-        assert(out);
-        if (out->getSize() != in->getSize() && !out->resize(in->getSize())) {
-            return sq_throwerror(v, _SC("out of memory"));
-        }
-
-        if (!This->decrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
-            return sq_throwerror(v, _SC("decryption failed"));
-        }
-
-        sq_push(v, 3);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create(in->getSize());
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create(ct->getSize());
+        if (!This->decrypt(ct->getBuffer(), blob->getBuffer(), ct->getSize())) {
+            THROW_ERROR("Decryption failed")
         }
-
-        if (!This->decrypt(in->getBuffer(), out->getBuffer(), in->getSize())) {
-            return sq_throwerror(v, _SC("decryption failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
 // Cipher._typeof()
 static SQInteger script_cipher__typeof(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Cipher"), -1);
-    return 1;
+    SETUP_CIPHER_OBJECT()
+    RET_STRING("Cipher")
 }
 
 //-----------------------------------------------------------------
 // Cipher._tostring()
 static SQInteger script_cipher__tostring(HSQUIRRELVM v)
 {
-    ICipher* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_CIPHER_OBJECT()
     std::ostringstream oss;
-    oss << "<Cipher instance>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<Cipher instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
@@ -6766,37 +3868,39 @@ bool IsCipher(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-ICipher* GetCipher(HSQUIRRELVM v, SQInteger idx)
+void BindCipher(ICipher* cipher)
+{
+    assert(g_CipherClass._type == OT_CLASS);
+    assert(cipher);
+    sq_pushobject(g_VM, g_CipherClass); // push cipher class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop cipher class
+    sq_setreleasehook(g_VM, -1, script_cipher_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)cipher);
+    cipher->grab(); // grab a new reference
+}
+
+//-----------------------------------------------------------------
+ICipher* GetCipher(SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_CIPHER))) {
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_CIPHER))) {
         return (ICipher*)p;
     }
     return 0;
 }
 
-//-----------------------------------------------------------------
-bool BindCipher(HSQUIRRELVM v, ICipher* cipher)
-{
-    if (!cipher) {
-        return false;
-    }
-    sq_pushobject(v, g_cipher_class); // push cipher class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop cipher class
-        return false;
-    }
-    sq_remove(v, -2); // pop cipher class
-    sq_setreleasehook(v, -1, script_cipher_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)cipher);
-    cipher->grab(); // grab a new reference
-    return true;
-}
-
 /***************************** HASH *******************************/
 
+#define SETUP_HASH_OBJECT() \
+    IHash* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) { \
+        THROW_ERROR("Invalid type of environment object, expected a Hash instance") \
+    }
+
 //-----------------------------------------------------------------
-static SQInteger script_hash_destructor(SQUserPointer p, SQInteger size)
+static SQInteger script_hasher_destructor(SQUserPointer p, SQInteger size)
 {
     assert(p);
     ((IHash*)p)->drop();
@@ -6804,151 +3908,101 @@ static SQInteger script_hash_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Hash(type)
+// Hash.MD5()
 static SQInteger script_hash_constructor(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized Hash instances
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
+    HashPtr hash = CreateMD5Hash();
+    RET_HASH(hash.get())
+}
 
-    // get type
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    SQInteger type;
-    sq_getinteger(v, 2);
+//-----------------------------------------------------------------
+// Hash.SHA256()
+static SQInteger script_hash_SHA256(HSQUIRRELVM v)
+{
+    HashPtr hash = CreateSHA256Hash();
+    RET_HASH(hash.get())
+}
 
-    This = crypt::CreateHash(type);
-    if (!This) {
-        return sq_throwerror(v, _SC("failed to create hash"));
-    }
-    sq_setinstanceup(v, 1, (SQUserPointer)This);
-    sq_setreleasehook(v, 1, script_hash_destructor);
-    return 0;
+//-----------------------------------------------------------------
+// Hash.SHA512()
+static SQInteger script_hash_SHA512(HSQUIRRELVM v)
+{
+    HashPtr hash = CreateSHA512Hash();
+    RET_HASH(hash.get())
+}
+
+//-----------------------------------------------------------------
+// Hash.Whirlpool()
+static SQInteger script_hash_Whirlpool(HSQUIRRELVM v)
+{
+    HashPtr hash = CreateWhirlpoolHash();
+    RET_HASH(hash.get())
 }
 
 //-----------------------------------------------------------------
 // Hash.init()
 static SQInteger script_hash_init(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_HASH_OBJECT()
+    if (!This->init()) {
+        THROW_ERROR("Could not initialize hash")
     }
-    assert(This);
-
-    sq_pushbool(v, This->init());
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Hash.isInitialized()
 static SQInteger script_hash_isInitialized(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isInitialized());
-    return 1;
+    SETUP_HASH_OBJECT()
+    RET_BOOL(This->isInitialized())
 }
 
 //-----------------------------------------------------------------
-// Hash.getType()
-static SQInteger script_hash_getType(HSQUIRRELVM v)
-{
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getType());
-    return 1;
-}
-
-//-----------------------------------------------------------------
-// Hash.process(in)
+// Hash.process(data)
 static SQInteger script_hash_encrypt(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_HASH_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
-    assert(This);
-
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+    if (!This->process(in->getBuffer(), in->getSize())) {
+        THROW_ERROR("Could not process data")
     }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
-    }
-
-    sq_pushbool(v, This->process(in->getBuffer(), in->getSize()));
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
 // Hash.finish()
 static SQInteger script_hash_encrypt(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_HASH_OBJECT()
     BlobPtr result = Blob::Create();
-    if (!result) {
-        return sq_throwerror(v, _SC("out of memory"));
-    }
-
     if (!This->finish(result.get())) {
-        return sq_throwerror(v, _SC("finish failed"));
+        THROW_ERROR("Could not finish hash")
     }
-
-    if (!BindBlob(v, result.get())) {
-        return sq_throwerror(v, _SC("internal error"));
-    }
-    return 1;
+    RET_BLOB(result.get())
 }
 
 //-----------------------------------------------------------------
 // Hash._typeof()
 static SQInteger script_hash__typeof(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("Hash"), -1);
-    return 1;
+    SETUP_HASH_OBJECT()
+    RET_STRING("Hash")
 }
 
 //-----------------------------------------------------------------
 // Hash._tostring()
 static SQInteger script_hash__tostring(HSQUIRRELVM v)
 {
-    IHash* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_HASH_OBJECT()
     std::ostringstream oss;
-    oss << "<Hash instance>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<Hash instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
@@ -6963,7 +4017,21 @@ bool IsHash(HSQUIRRELVM v, SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-IHash* GetHash(HSQUIRRELVM v, SQInteger idx)
+void BindHash(IHash* hash)
+{
+    assert(g_HashClass._type == OT_CLASS);
+    assert(hash);
+    sq_pushobject(v, g_HashClass); // push hash class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(v, -2); // pop hash class
+    sq_setreleasehook(v, -1, script_hash_destructor);
+    sq_setinstanceup(v, -1, (SQUserPointer)hash);
+    hash->grab(); // grab a new reference
+}
+
+//-----------------------------------------------------------------
+IHash* GetHash(SQInteger idx)
 {
     SQUserPointer p = 0;
     if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_HASH))) {
@@ -6972,301 +4040,211 @@ IHash* GetHash(HSQUIRRELVM v, SQInteger idx)
     return 0;
 }
 
-//-----------------------------------------------------------------
-bool BindHash(HSQUIRRELVM v, IHash* hash)
-{
-    if (!hash) {
-        return false;
-    }
-    sq_pushobject(v, g_hash_class); // push hash class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop hash class
-        return false;
-    }
-    sq_remove(v, -2); // pop hash class
-    sq_setreleasehook(v, -1, script_hash_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)hash);
-    hash->grab(); // grab a new reference
-    return true;
-}
-
 /******************************************************************
  *                                                                *
  *                          COMPRESSION                           *
  *                                                                *
  ******************************************************************/
 
-/**************************** ZSTREAM *****************************/
+/************************ COMPRESSIONSTREAM ***********************/
+
+#define SETUP_COMPRESSIONSTREAM_OBJECT() \
+    ICompressionStream* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_COMPRESSIONSTREAM))) { \
+        THROW_ERROR("Invalid type of environment object, expected a CompressionStream instance") \
+    }
 
 //-----------------------------------------------------------------
-static SQInteger script_zstream_destructor(SQUserPointer p, SQInteger size)
+static SQInteger script_compressionstream_destructor(SQUserPointer p, SQInteger size)
 {
     assert(p);
-    ((ZStream*)p)->drop();
+    ((ICompressionStream*)p)->drop();
     return 0;
 }
 
 //-----------------------------------------------------------------
-// ZStream()
-static SQInteger script_zstream_constructor(HSQUIRRELVM v)
+// CompressionStream.Deflate()
+static SQInteger script_compressionstream_Deflate(HSQUIRRELVM v)
 {
-    // ensure that this function is only ever called on uninitialized ZStream instances
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM)) || This != 0) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(!This);
-
-    // get type
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <type>"));
-    }
-    SQInteger type;
-    sq_getinteger(v, 2);
-
-    This = ZStream::Create();
-    if (!This) {
-        return sq_throwerror(v, _SC("failed to create zstream"));
-    }
-    sq_setinstanceup(v, 1, (SQUserPointer)This);
-    sq_setreleasehook(v, 1, script_zstream_destructor);
-    return 0;
+    CompressionStreamPtr stream = CreateDeflateCompressionStream();
+    RET_COMPRESSIONSTREAM(stream.get())
 }
 
 //-----------------------------------------------------------------
-// ZStream.init()
-static SQInteger script_zstream_init(HSQUIRRELVM v)
+// CompressionStream.LZMA2()
+static SQInteger script_compressionstream_LZMA2(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->init());
-    return 1;
+    CompressionStreamPtr stream = CreateLZMA2CompressionStream();
+    RET_COMPRESSIONSTREAM(stream.get())
 }
 
 //-----------------------------------------------------------------
-// ZStream.isInitialized()
-static SQInteger script_zstream_isInitialized(HSQUIRRELVM v)
+// CompressionStream.BZIP2()
+static SQInteger script_compressionstream_BZIP2(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushbool(v, This->isInitialized());
-    return 1;
+    CompressionStreamPtr stream = CreateBZIP2CompressionStream();
+    RET_COMPRESSIONSTREAM(stream.get())
 }
 
 //-----------------------------------------------------------------
-// ZStream.getMode()
-static SQInteger script_zstream_getMode(HSQUIRRELVM v)
+// CompressionStream.init(mode)
+static SQInteger script_compressionstream_init(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, mode)
+    if (!This->init(mode)) {
+        THROW_ERROR("Could not initialize compression stream")
     }
-    assert(This);
-
-    sq_pushinteger(v, This->getMode());
-    return 1;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// ZStream.getBufferSize()
-static SQInteger script_zstream_getBufferSize(HSQUIRRELVM v)
+// CompressionStream.isInitialized()
+static SQInteger script_compressionstream_isInitialized(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushinteger(v, This->getBufferSize());
-    return 1;
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    RET_BOOL(This->isInitialized())
 }
 
 //-----------------------------------------------------------------
-// ZStream.setBufferSize(size)
-static SQInteger script_zstream_setBufferSize(HSQUIRRELVM v)
+// CompressionStream.getMode()
+static SQInteger script_compressionstream_getMode(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    if (!This->isInitialized()) {
+        THROW_ERROR("Invalid stream state")
     }
-    assert(This);
-
-    // get size
-    if (sq_gettype(v, 2) != OT_INTEGER) {
-        return sq_throwerror(v, _SC("invalid type of parameter <size>"));
-    }
-    SQInteger size;
-    sq_getinteger(v, 2, &size);
-
-    sq_pushbool(v, This->setBufferSize(size));
-    return 1;
+    RET_INT(This->getMode())
 }
 
 //-----------------------------------------------------------------
-// ZStream.process(in [, out])
-static SQInteger script_zstream_process(HSQUIRRELVM v)
+// CompressionStream.getBufferSize()
+static SQInteger script_compressionstream_getBufferSize(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    RET_INT(This->getBufferSize())
+}
 
-    // get in
-    if (!IsBlob(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <in>"));
+//-----------------------------------------------------------------
+// CompressionStream.setBufferSize(size)
+static SQInteger script_compressionstream_setBufferSize(HSQUIRRELVM v)
+{
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, size)
+    if (size <= 0) {
+        THROW_ERROR("Invalid size")
     }
-    Blob* in = GetBlob(v, 2);
-    assert(in);
-    if (in->getSize() == 0) {
-        return sq_throwerror(v, _SC("invalid parameter <in>"));
+    if (!This->setBufferSize(size)) {
+        THROW_ERROR("Could not set buffer size")
     }
+    RET_VOID()
+}
 
-    if (sq_gettop(v) >= 3) {
-        if (!IsBlob(v, 3)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+//-----------------------------------------------------------------
+// CompressionStream.consume(data [, out])
+static SQInteger script_compressionstream_consume(HSQUIRRELVM v)
+{
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    GET_OPTARG_BLOB(2, out)
+    if (!This->isInitialized()) {
+        THROW_ERROR("Invalid stream state")
+    }
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
+    }
+    if (out) {
+        if (!This->consume(data->getBuffer(), data->getSize(), out)) {
+            THROW_ERROR("Could not consume data")
         }
-        Blob* out = GetBlob(v, 3);
-        assert(out);
-
-        if (!This->process(in->getBuffer(), in->getSize(), out)) {
-            return sq_throwerror(v, _SC("processing failed"));
-        }
-
-        sq_push(v, 3);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create();
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create();
+        if (!This->consume(data->getBuffer(), data->getSize(), blob.get())) {
+            THROW_ERROR("Could not consume data")
         }
-
-        if (!This->process(in->getBuffer(), in->getSize(), out.get())) {
-            return sq_throwerror(v, _SC("processing failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
-// ZStream.finish([out])
-static SQInteger script_zstream_finish(HSQUIRRELVM v)
+// CompressionStream.close([out])
+static SQInteger script_compressionstream_close(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    GET_OPTARG_BLOB(1, out)
+    if (!This->isInitialized()) {
+        THROW_ERROR("Invalid stream state")
     }
-    assert(This);
-
-    if (sq_gettop(v) >= 2) {
-        if (!IsBlob(v, 2)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <out>"));
+    if (out) {
+        if (!This->close(out)) {
+            THROW_ERROR("Could not close compression stream")
         }
-        Blob* out = GetBlob(v, 2);
-        assert(out);
-
-        if (!This->finish(out)) {
-            return sq_throwerror(v, _SC("finishing failed"));
-        }
-
-        sq_push(v, 2);
-
+        RET_ARG(2)
     } else {
-        BlobPtr out = Blob::Create();
-        if (!out) {
-            return sq_throwerror(v, _SC("out of memory"));
+        BlobPtr blob = Blob::Create();
+        if (!This->close(blob.get())) {
+            THROW_ERROR("Could not close compression stream")
         }
-
-        if (!This->finish(out.get())) {
-            return sq_throwerror(v, _SC("finishing failed"));
-        }
-
-        if (!BindBlob(v, out.get())) {
-            return sq_throwerror(v, _SC("internal error"));
-        }
+        RET_BLOB(blob.get())
     }
-    return 1;
 }
 
 //-----------------------------------------------------------------
-// ZStream._typeof()
-static SQInteger script_zstream__typeof(HSQUIRRELVM v)
+// CompressionStream._typeof()
+static SQInteger script_compressionstream__typeof(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
-    sq_pushstring(v, _SC("ZStream"), -1);
-    return 1;
+    SETUP_COMPRESSIONSTREAM_OBJECT()
+    RET_STRING("CompressionStream")
 }
 
 //-----------------------------------------------------------------
-// ZStream._tostring()
-static SQInteger script_zstream__tostring(HSQUIRRELVM v)
+// CompressionStream._tostring()
+static SQInteger script_compressionstream__tostring(HSQUIRRELVM v)
 {
-    ZStream* This = 0;
-    if (!SQ_SUCCEEDED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) {
-        return sq_throwerror(v, _SC("invalid environment object"));
-    }
-    assert(This);
-
+    SETUP_COMPRESSIONSTREAM_OBJECT()
     std::ostringstream oss;
-    oss << "<ZStream instance>";
-    sq_pushstring(v, oss.str().c_str(), -1);
-    return 1;
+    oss << "<CompressionStream instance at " << This;
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-bool IsZStream(HSQUIRRELVM v, SQInteger idx)
+bool IsCompressionStream(HSQUIRRELVM v, SQInteger idx)
 {
     if (sq_gettype(v, idx) == OT_INSTANCE) {
         SQUserPointer tt;
         sq_gettypetag(v, idx, &tt);
-        return tt == TT_ZSTREAM;
+        return tt == TT_COMPRESSIONSTREAM;
     }
     return false;
 }
 
 //-----------------------------------------------------------------
-ZStream* GetZStream(HSQUIRRELVM v, SQInteger idx)
+void BindCompressionStream(ICompressionStream* stream)
 {
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_ZSTREAM))) {
-        return (ZStream*)p;
-    }
-    return 0;
+    assert(g_CompressionStreamClass._type == OT_CLASS);
+    assert(stream);
+    sq_pushobject(g_VM, g_CompressionStreamClass); // push compressionstream class
+    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
+    assert(succeeded);
+    sq_remove(g_VM, -2); // pop compressionstream class
+    sq_setreleasehook(g_VM, -1, script_compressionstream_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)stream);
+    stream->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-bool BindZStream(HSQUIRRELVM v, ZStream* stream)
+ICompressionStream* GetCompressionStream(SQInteger idx)
 {
-    if (!stream) {
-        return false;
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_COMPRESSIONSTREAM))) {
+        return (ICompressionStream*)p;
     }
-    sq_pushobject(v, g_zstream_class); // push zstream class
-    if (!SQ_SUCCEEDED(sq_createinstance(v, -1))) {
-        sq_poptop(v); // pop zstream class
-        return false;
-    }
-    sq_remove(v, -2); // pop zstream class
-    sq_setreleasehook(v, -1, script_zstream_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)stream);
-    stream->grab(); // grab a new reference
-    return true;
+    return 0;
 }
 
 /******************************************************************
@@ -7276,46 +4254,6 @@ bool BindZStream(HSQUIRRELVM v, ZStream* stream)
  ******************************************************************/
 
 //-----------------------------------------------------------------
-struct STREAMSOURCE {
-    IStream* stream;
-    int remaining;
-};
-
-static SQInteger lexfeed_callback(SQUserPointer p)
-{
-    char c;
-    IStream* stream = (IStream*)p;
-    if (stream->read(&c, sizeof(c)) == sizeof(c)) {
-        return c;
-    }
-    return 0;
-}
-
-static SQInteger ss_lexfeed_callback(SQUserPointer p)
-{
-    char c;
-    STREAMSOURCE* ss = (STREAMSOURCE*)p;
-    if (ss->remaining > 0 && ss->stream->read(&c, sizeof(c)) == sizeof(c)) {
-        ss->remaining -= sizeof(c);
-        return c;
-    }
-    return 0;
-}
-
-static bool compile_stream(HSQUIRRELVM v, const std::string& name, IStream* stream, int size = -1, bool raiseerror = true)
-{
-    assert(stream);
-    if (stream) {
-        if (size > 0) {
-            STREAMSOURCE ss = {stream, size};
-            return SQ_SUCCEEDED(sq_compile(v, ss_lexfeed_callback, &ss, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
-        } else {
-            return SQ_SUCCEEDED(sq_compile(v, lexfeed_callback, stream, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
-        }
-    }
-    return false;
-}
-
 static bool compile_buffer(HSQUIRRELVM v, const std::string& name, const void* buffer, int size, bool raiseerror = true)
 {
     assert(buffer);
@@ -7327,314 +4265,191 @@ static bool compile_buffer(HSQUIRRELVM v, const std::string& name, const void* b
 }
 
 //-----------------------------------------------------------------
-// Compile(source [, name = <...>, pos = 0, n = -1])
+// CompileString(source [, scriptName = "unknown"])
 static SQInteger script_CompileStream(HSQUIRRELVM v)
 {
-    if (sq_gettype(v, 2) == OT_STRING) {
-        // get source
-        const SQChar* source = 0;
-        sq_getstring(v, 2, &source);
-        int source_length = sq_getsize(v, 2);
-        if (source_length == 0) { // can't compile an empty string
-            return sq_throwerror(v, _SC("invalid parameter <source>"));
-        }
-
-        // get optional name
-        const SQChar* name = _SC("<string source>");
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettype(v, 3) != OT_STRING) {
-                return sq_throwerror(v, _SC("invalid type of parameter <name>"));
-            }
-            sq_getstring(v, 3, &name);
-        }
-
-        // get optional pos
-        SQInteger pos = 0;
-        if (sq_gettop(v) >= 4) {
-            if (sq_gettype(v, 4) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
-            }
-            sq_getinteger(v, 4, &pos);
-        }
-        if (pos < 0 || pos >= source_length) {
-            return sq_throwerror(v, _SC("invalid parameter <pos>"));
-        }
-
-        // get optional n
-        SQInteger n = -1;
-        if (sq_gettop(v) >= 5) {
-            if (sq_gettype(v, 5) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getinteger(v, 5, &n);
-        }
-        if (n < 0) {
-            n = source_length - pos;
-        } else if (n > 0) {
-            n = std::min(n, source_length - pos);
-        } else {
-            return sq_throwerror(v, _SC("invalid parameter <n>"));
-        }
-
-        // compile
-        if (!compile_buffer(v, name, source + pos, n)) {
-            return sq_throwerror(v, _SC("failed to compile"));
-        }
-
-    } else if (IsBlob(v, 2)) {
-        // get source
-        Blob* source = GetBlob(v, 2);
-        assert(source);
-        if (source->getSize() == 0) { // can't compile an empty blob
-            return sq_throwerror(v, _SC("invalid parameter <source>"));
-        }
-
-        // get optional name
-        const SQChar* name = _SC("<blob source>");
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettype(v, 3) != OT_STRING) {
-                return sq_throwerror(v, _SC("invalid type of parameter <name>"));
-            }
-            sq_getstring(v, 3, &name);
-        }
-
-        // get optional pos
-        SQInteger pos = 0;
-        if (sq_gettop(v) >= 4) {
-            if (sq_gettype(v, 4) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <pos>"));
-            }
-            sq_getinteger(v, 4, &pos);
-        }
-        if (pos < 0 || pos >= source->getSize()) {
-            return sq_throwerror(v, _SC("invalid parameter <pos>"));
-        }
-
-        // get optional n
-        SQInteger n = -1;
-        if (sq_gettop(v) >= 5) {
-            if (sq_gettype(v, 5) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getinteger(v, 5, &n);
-        }
-        if (n < 0) {
-            n = source->getSize() - pos;
-        } else if (n > 0) {
-            n = std::min(n, source->getSize() - pos);
-        } else {
-            return sq_throwerror(v, _SC("invalid parameter <n>"));
-        }
-
-        // compile
-        if (!compile_buffer(v, name, source->getBuffer() + pos, n)) {
-            return sq_throwerror(v, _SC("failed to compile"));
-        }
-
-    } else if (IsFile(v, 2)) {
-        // get source
-        IFile* source = GetFile(v, 2);
-        assert(source);
-        if (!source->isOpen() || !source->isReadable()) {
-            return sq_throwerror(v, _SC("invalid parameter <source>"));
-        }
-
-        // get optional name
-        const SQChar* name = (const SQChar*)source->getName().c_str(); // default is the filename
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettype(v, 3) != OT_STRING) {
-                return sq_throwerror(v, _SC("invalid type of parameter <name>"));
-            }
-            sq_getstring(v, 3, &name);
-        }
-
-        // ignore optional pos
-
-        // get optional n
-        SQInteger n = -1;
-        if (sq_gettop(v) >= 5) {
-            if (sq_gettype(v, 5) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getinteger(v, 5, &n);
-        }
-
-        // compile
-        if (!compile_stream(v, name, source, n)) {
-            return sq_throwerror(v, _SC("failed to compile"));
-        }
-
-    } else { // assume a stream
-        // get source
-        if (!IsStream(v, 2)) {
-            return sq_throwerror(v, _SC("invalid type of parameter <source>"));
-        }
-        IStream* source = GetStream(v, 2);
-        assert(source);
-        if (!source->isOpen() || !source->isReadable()) {
-            return sq_throwerror(v, _SC("invalid parameter <source>"));
-        }
-
-        // get optional name
-        const SQChar* name = _SC("<stream source>");
-        if (sq_gettop(v) >= 3) {
-            if (sq_gettype(v, 3) != OT_STRING) {
-                return sq_throwerror(v, _SC("invalid type of parameter <name>"));
-            }
-            sq_getstring(v, 3, &name);
-        }
-
-        // ignore optional pos
-
-        // get optional n
-        SQInteger n = -1;
-        if (sq_gettop(v) >= 5) {
-            if (sq_gettype(v, 5) != OT_INTEGER) {
-                return sq_throwerror(v, _SC("invalid type of parameter <n>"));
-            }
-            sq_getinteger(v, 5, &n);
-        }
-
-        // compile
-        if (!compile_stream(v, name, source, n)) {
-            return sq_throwerror(v, _SC("failed to compile"));
-        }
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, source)
+    GET_OPTARG_STRING(2, scriptName, "unknown")
+    len = strlen(source);
+    if (len == 0) {
+        THROW_ERROR("Empty source")
+    }
+    if (!compile_buffer(v, scriptName, source, len)) {
+        THROW_ERROR("Could not compile string")
     }
     return 1;
 }
 
 //-----------------------------------------------------------------
-IFile* open_script_file(const std::string& filename)
+// CompileBlob(source [, scriptName = "unknown", offset = 0, count = -1])
+static SQInteger script_CompileStream(HSQUIRRELVM v)
 {
-    assert(!filename.empty());
-
-    // filename exists and has either no extension or an unknown extension, assume it's a compiled script
-    if (fs::exists(filename)) {
-        std::string fn_ext(fs::path(filename).extension());
-        if (fn_ext.empty() || (fn_ext != SCRIPT_FILE_EXT && fn_ext != COMPILED_SCRIPT_FILE_EXT)) {
-            // deserialize
-            fileptr f = file::create();
-            if (f->open(filename, file::IN)) {
-                return SQ_SUCCEEDED(sq_readclosure(v, _closurereadfunc, f.get()));
-            }
-            return false;
-        }
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, source)
+    GET_OPTARG_STRING(2, scriptName, "unknown")
+    GET_OPTARG_INT(3, offset, 0)
+    GET_OPTARG_INT(4, count, -1)
+    if (source->getSize() == 0) {
+        THROW_ERROR("Empty source")
     }
+    if (offset < 0 || offset >= source->getSize()) {
+        THROW_ERROR("Invalid offset")
+    }
+    if (count < 0) {
+        count = source->getSize() - offset;
+    } else if (count == 0 || count > source->getSize() - offset) {
+        THROW_ERROR("Invalid count")
+    }
+    if (!compile_buffer(v, scriptName, source->getBuffer() + offset, count)) {
+        THROW_ERROR("Could not compile blob")
+    }
+    return 1;
+}
 
-    fs::path  nut_file_path(fs::path(filename).replace_extension(SCRIPT_FILE_EXT));
-    fs::path nutc_file_path(fs::path(filename).replace_extension(COMPILED_SCRIPT_FILE_EXT));
+//-----------------------------------------------------------------
+static SQInteger lexfeed_callback(SQUserPointer p)
+{
+    char c;
+    IStream* stream = (IStream*)p;
+    if (stream->read(&c, sizeof(c)) == sizeof(c)) {
+        return c;
+    }
+    return 0;
+}
 
-    if (fs::exists(nutc_file_path)) {
-        // deserialize
-        fileptr nutc_file = file::create();
-        if (nutc_file->open(nutc_file_path.string(), file::IN)) {
-            return SQ_SUCCEEDED(sq_readclosure(v, _closurereadfunc, nutc_file.get()));
-        }
-    } else if (fs::exists(nut_file_path)) {
-        fileptr nut_file = file::create();
-        if (nut_file->open(nut_file_path.string(), file::IN)) {
-            // compile
-            if (compilestream(v, filename, nut_file.get())) {
-                return true;
-            }
+//-----------------------------------------------------------------
+struct STREAMSOURCE {
+    IStream* stream;
+    int remaining;
+};
+
+static SQInteger lexfeed_callback_ex(SQUserPointer p)
+{
+    char c;
+    STREAMSOURCE* ss = (STREAMSOURCE*)p;
+    if (ss->remaining > 0 && ss->stream->read(&c, sizeof(c)) == sizeof(c)) {
+        ss->remaining -= sizeof(c);
+        return c;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+static bool compile_stream(HSQUIRRELVM v, const std::string& name, IStream* stream, int size = -1, bool raiseerror = true)
+{
+    assert(stream);
+    if (stream) {
+        if (size > 0) {
+            STREAMSOURCE ss = {stream, size};
+            return SQ_SUCCEEDED(sq_compile(v, lexfeed_callback_ex, &ss, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
+        } else {
+            return SQ_SUCCEEDED(sq_compile(v, lexfeed_callback, stream, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
         }
     }
     return false;
 }
 
 //-----------------------------------------------------------------
-// Require(name)
+// CompileStream(source [, scriptName = "unknown", count = -1])
+static SQInteger script_CompileStream(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STREAM(1, source)
+    GET_OPTARG_STRING(2, scriptName, "unknown")
+    GET_OPTARG_INT(3, count, -1)
+    if (!source->isOpen() || !source->isReadable()) {
+        THROW_ERROR("Invalid source")
+    }
+    if (count == 0) {
+        THROW_ERROR("Invalid count")
+    }
+    if (!compile_stream(v, scriptName, source, count)) {
+        THROW_ERROR("Could not compile stream")
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool EvaluateScript(const std::string& filename)
+{
+    int old_top = sq_gettop(g_VM); // save stack top
+
+    // load script
+    if (DoesFileExist(filename)) {
+        FilePtr file = OpenFile(filename);
+        if (LoadObject(g_VM, file.get())) { // try loading as bytecode
+            if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
+                sq_settop(g_VM, old_top); // restore stack top
+                return false;
+            }
+        } else { // try compiling as plain text
+            file->seek(0); // LoadObject changed the stream position, set it back to beginning
+            if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
+                sq_settop(g_VM, old_top); // restore stack top
+                return false;
+            }
+        }
+    } else { // file does not exist
+        return false;
+    }
+
+    // execute script
+    sq_pushroottable(g_VM); // this
+    if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQFalse, SQTrue))) {
+        sq_settop(g_VM, old_top); // restore stack top
+        return false;
+    }
+
+    sq_settop(g_VM, old_top); // restore stack top
+    return true;
+}
+
+//-----------------------------------------------------------------
+// RequireScript(name)
 static SQInteger script_RequireScript(HSQUIRRELVM v)
 {
-    // get name
-    const SQChar* name = 0;
-    if (sq_gettype(v, 2) != OT_STRING) {
-        return sq_throwerror(v, _SC("invalid type of parameter <name>"));
-    }
-    sq_getstring(v, 2, &name);
-    if (sq_getsize(v, 2) == 0) { // empty string
-        return sq_throwerror(v, _SC("invalid parameter <name>"));
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, name)
+    if (strlen(name) == 0) {
+        THROW_ERROR("Empty script name")
     }
 
-    // get script name without file extension
-    std::string script_name(name);
-    size_t dot_pos = script_name.rfind('.');
-    if (dot_pos != std::string::npos) {
-        script_name.erase(dot_pos);
+    // complement path
+    std::string script = name;
+    if (!ComplementPath(script)) {
+        THROW_ERROR("Invalid path")
     }
 
-    // see if the script is already loaded
-    for (int i = 0; i < (int)g_loaded_scripts.size(); ++i) {
-        if (g_loaded_scripts[i] == script_name) {
-            return 0; // already loaded so nothing to do here
+    // see if the script has already been loaded
+    for (int i = 0; i < (int)g_ScriptRegistry.size(); ++i) {
+        if (g_ScriptRegistry[i] == script) {
+            RET_VOID() // already loaded, nothing to do here
         }
     }
 
-    // load script
-    if (!load_script(v, name)) {
-        // try to open from the system directory
-        if (!load_script(v, GetInitialPath() + "/system/script/" + name)) {
-            return sq_throwerror(v, _SC("failed to load script"));
-        }
+    // evaluate script
+    if (!EvaluateScript(script + BYTECODE_FILE_EXT) && // prefer bytecode
+        !EvaluateScript(script +   SCRIPT_FILE_EXT))
+    {
+        THROW_ERROR("Could not evaluate script")
     }
 
-    "bla.nut"
-    "foo/bar.bin"
-    "/system/script/foo.nut"
+    // register script
+    g_ScriptRegistry.push_back(script);
 
+    RET_VOID()
+}
 
-
-
-
-
-    std::string filename(pfilename);
-
-    // split filename into name and extension
-    std::string name(filename);
-    std::string extension;
-    size_t dot_pos = name.rfind('.');
-    if (dot_pos != std::string::npos) {
-        extension = name.substr(dot_pos);
-        name.erase(dot_pos);
-    }
-
-
-    // open file
-    FilePtr file = OpenFile(filename);
-    if (!file) {
-        return sq_throwerror(v, _SC("failed to open file"));
-    }
-
-    // load script
-    if (extension == ".sphere-script") { // assume it's plain text
-        if (!compile_stream(v, filename, file.get())) {
-            return sq_throwerror(v, _SC("failed to compile script"));
-        }
-    } else { // assume it's bytecode
-        if (!unmarshal_object(v, file.get())) {
-            return sq_throwerror(v, _SC("failed to load bytecode"));
-        }
-    }
-
-    if (!x::script::loadfile(v, name)) {
-        // see if there is a system script with that name
-        if (!x::script::loadfile(v, (fs::initial_path() / "system/scripts" / name).string())) {
-            THROW1("could not import script '%s'", name);
-        }
-    }
-
-
-    if (_nvars >= 3 && sq_gettype(v, 3) == OT_TABLE) {
-        sq_push(v, 3);
-    } else {
-        sq_pushroottable(v);
-    }
-    sq_call(v, 1, SQFalse, SQTrue);
-    sq_poptop(v); // pop closure
-    if (_nvars >= 3 && sq_gettype(v, 3) == OT_TABLE) {
-        sq_push(v, 3);
-    } else {
-        sq_pushroottable(v);
+//-----------------------------------------------------------------
+// GetLoadedScripts()
+static SQInteger script_RequireScript(HSQUIRRELVM v)
+{
+    sq_newarray(v, g_ScriptRegistry.size());
+    for (int i = 0; i < (int)g_ScriptRegistry.size(); i++) {
+        sq_pushinteger(v, i); // key
+        sq_pushstring(v, g_ScriptRegistry[i].c_str(), -1);
+        sq_rawset(v, -3);
     }
     return 1;
 }
@@ -7767,7 +4582,7 @@ static bool ObjectToJSON(HSQUIRRELVM v, SQInteger idx)
 static SQInteger script_ObjectToJSON(HSQUIRRELVM v)
 {
     if (!ObjectToJSON(v, 2)) {
-        return sq_throwerror(v, _SC("conversion to JSON failed"));
+        THROW_ERROR("conversion to JSON failed")
     }
     return 1;
 }
@@ -7791,13 +4606,13 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     switch (sq_gettype(v, idx)) {
     case OT_NULL: {
-        return writeu32l(stream, MARSHAL_MAGIC_NULL);
+        return writei32l(stream, MARSHAL_MAGIC_NULL);
     }
     case OT_INTEGER: {
         SQInteger i;
         sq_getinteger(v, idx, &i);
-        if (!writeu32l(stream, MARSHAL_MAGIC_INTEGER) ||
-            !writeu32l(stream, (u32)i))
+        if (!writei32l(stream, MARSHAL_MAGIC_INTEGER) ||
+            !writei32l(stream, (i32)i))
         {
             return false;
         }
@@ -7806,14 +4621,17 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     case OT_BOOL: {
         SQBool b;
         sq_getbool(v, idx, &b);
-        return writeu32l(stream, ((b == SQTrue) ? MARSHAL_MAGIC_BOOL_TRUE : MARSHAL_MAGIC_BOOL_FALSE));
+        return writei32l(stream, ((b == SQTrue) ? MARSHAL_MAGIC_BOOL_TRUE : MARSHAL_MAGIC_BOOL_FALSE));
     }
     case OT_FLOAT: {
         SQFloat f;
         sq_getfloat(v, idx, &f);
-        int pos = stream->tell();
-        if (!writeu32l(stream, MARSHAL_MAGIC_FLOAT) ||
+        if (!writei32l(stream, MARSHAL_MAGIC_FLOAT) ||
+#ifdef SQUSEDOUBLE
+            !writef64l(stream, (f64)f))
+#else
             !writef32l(stream, (f32)f))
+#endif
         {
             return false;
         }
@@ -7822,9 +4640,9 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     case OT_STRING: {
         const SQChar* s = 0;
         sq_getstring(v, idx, &s);
-        u32 numbytes = (u32)sq_getsize(v, idx); // assumes sizeof(SQChar) == 1
-        if (!writeu32l(stream, MARSHAL_MAGIC_STRING) ||
-            !writeu32l(stream, numbytes))
+        u32 numbytes = (u32)sq_getsize(v, idx);
+        if (!writei32l(stream, MARSHAL_MAGIC_STRING) ||
+            !writei32l(stream, (i32)numbytes))
         {
             return false;
         }
@@ -7835,8 +4653,8 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     case OT_TABLE: {
         int oldtop = sq_gettop(v);
-        if (!writeu32l(stream, MARSHAL_MAGIC_TABLE) ||
-            !writeu32l(stream, sq_getsize(v, idx)))
+        if (!writei32l(stream, MARSHAL_MAGIC_TABLE) ||
+            !writei32l(stream, (i32)sq_getsize(v, idx)))
         {
             return false;
         }
@@ -7855,8 +4673,8 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     case OT_ARRAY: {
         int oldtop = sq_gettop(v);
-        if (!writeu32l(stream, MARSHAL_MAGIC_ARRAY) ||
-            !writeu32l(stream, sq_getsize(v, idx)))
+        if (!writei32l(stream, MARSHAL_MAGIC_ARRAY) ||
+            !writei32l(stream, (i32)sq_getsize(v, idx)))
         {
             return false;
         }
@@ -7872,7 +4690,7 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
         return true;
     }
     case OT_CLOSURE: {
-        if (!writeu32l(stream, MARSHAL_MAGIC_CLOSURE)) {
+        if (!writei32l(stream, MARSHAL_MAGIC_CLOSURE)) {
             return false;
         }
         sq_push(v, idx);
@@ -7882,21 +4700,21 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     case OT_INSTANCE: {
         int oldtop = sq_gettop(v);
-        if (!writeu32l(stream, MARSHAL_MAGIC_INSTANCE)) {
+        if (!writei32l(stream, MARSHAL_MAGIC_INSTANCE)) {
             return false;
         }
         sq_getclass(v, idx);
         SQUserPointer tt = 0;
         sq_gettypetag(v, -1, &tt);
 #ifdef _SQ64
-        if (!writeu64l(stream, (u64)tt)) {
+        if (!writei64l(stream, (i64)tt)) {
 #else
-        if (!writeu32l(stream, (u32)tt)) {
+        if (!writei32l(stream, (i32)tt)) {
 #endif
             sq_settop(v, oldtop);
             return false;
         }
-        sq_pushstring(v, _SC("_dump"), -1);
+        sq_pushstring(v, "_dump", -1);
         if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
             sq_settop(v, oldtop);
             return false;
@@ -7909,22 +4727,10 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
         }
         sq_pushroottable(v); // this
         sq_push(v, idx); // push the instance to marshal
-        if (!BindStream(v, stream)) { // push the output stream
-            sq_settop(v, oldtop);
-            return false;
-        }
-        if (!SQ_SUCCEEDED(sq_call(v, 3, SQTrue, SQTrue))) {
-            sq_settop(v, oldtop);
-            return false;
-        }
-        if (sq_gettype(v, -1) != OT_BOOL) {
-            sq_settop(v, oldtop);
-            return false;
-        }
-        SQBool retval;
-        sq_getbool(v, -1, &retval);
+        BindStream(v, stream); // push the output stream
+        bool succeeded = SQ_SUCCEEDED(sq_call(v, 3, SQFalse, SQTrue));
         sq_settop(v, oldtop);
-        return retval == SQTrue;
+        return succeeded;
     }
     default:
         return false;
@@ -7937,19 +4743,19 @@ static SQInteger script_DumpObject(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 3)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+        THROW_ERROR("Invalid type of parameter stream")
     }
     IStream* stream = GetStream(v, 3);
     assert(stream);
     if (!stream->isOpen() || !stream->isWriteable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid stream")
     }
 
     // marshal
     if (!DumpObject(v, 2, stream)) {
-        return sq_throwerror(v, _SC("serialization failed"));
+        THROW_ERROR("serialization failed")
     }
-    return 0;
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
@@ -7963,13 +4769,26 @@ static SQInteger read_closure_callback(SQUserPointer p, SQUserPointer buf, SQInt
 static bool LoadObject(HSQUIRRELVM v, IStream* stream)
 {
     assert(stream);
+
+    static ArrayPtr<char> s_Buffer;
+    static int s_BufferSize = 0;
+    if (s_BufferSize == 0) { // one-time initialization
+        try {
+            s_Buffer.reset(new char[256]);
+            s_BufferSize = 256;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return;
+        }
+    }
+
     if (!stream || !stream->isReadable()) {
         return false;
     }
 
     // read type
     u32 type;
-    if (!readu32l(stream, type)) {
+    if (!readi32l(stream, (i32)type)) {
         return false;
     }
 
@@ -7989,10 +4808,10 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
     case MARSHAL_MAGIC_INTEGER: {
 #ifdef _SQ64
         u64 i;
-        if (!readu64l(stream, i)) {
+        if (!readi64l(stream, (i64)i)) {
 #else
         u32 i;
-        if (!readu32l(stream, i)) {
+        if (!readi32l(stream, (i32)i)) {
 #endif
             return false;
         }
@@ -8013,28 +4832,33 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
         return true;
     }
     case MARSHAL_MAGIC_STRING: {
-        u32 numbytes; // equals to length of string if sizeof(SQChar) == 1
-        if (!readu32l(stream, numbytes)) {
+        u32 len;
+        if (!readi32l(stream, (i32)len)) {
             return false;
         }
-        if (numbytes == 0) {
-            sq_pushstring(v, _SC(""), -1);
+        if (len == 0) {
+            sq_pushstring(v, "", -1);
             return true; // ok, empty string
         }
-        if (numbytes % sizeof(SQChar) != 0) {
+        if (s_BufferSize < len) {
+            try {
+                s_Buffer.reset(new char[len]);
+                s_BufferSize = len;
+            } catch (const std::bad_alloc&) {
+                ReportOutOfMemory();
+                return false;
+            }
+        }
+        if (stream->read(s_Buffer.get(), len) != len) {
             return false;
         }
-        ArrayPtr<u8> buf = new u8[numbytes];
-        if (!stream->read(buf.get(), numbytes)) {
-            return false;
-        }
-        sq_pushstring(v, (const SQChar*)buf.get(), numbytes); // assuming sizeof(SQChar) == 1
+        sq_pushstring(v, (const SQChar*)s_Buffer.get(), len);
         return true;
     }
     case MARSHAL_MAGIC_TABLE: {
         int oldtop = sq_gettop(v);
         u32 size;
-        if (!readu32l(stream, size)) {
+        if (!readi32l(stream, (i32)size)) {
             return false;
         }
         sq_newtable(v);
@@ -8052,7 +4876,7 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
     case MARSHAL_MAGIC_ARRAY: {
         int oldtop = sq_gettop(v);
         u32 size;
-        if (!readu32l(stream, size)) {
+        if (!readi32l(stream, (i32)size)) {
             return false;
         }
         sq_newarray(v, 0);
@@ -8072,23 +4896,31 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
         int oldtop = sq_gettop(v);
 #ifdef _SQ64
         u64 tt;
-        if (!readu64l(stream, tt)) {
+        if (!readi64l(stream, (i64)tt)) {
 #else
         u32 tt;
-        if (!readu32l(stream, tt)) {
+        if (!readi32l(stream, (i32)tt)) {
 #endif
             return false;
         }
-        u32 numbytes; // equals to length of the string if sizeof(SQChar) == 1
-        if (!readu32l(stream, numbytes)) {
+        u32 len;
+        if (!readi32l(stream, (i32)len)) {
             return false;
         }
-        ArrayPtr<u8> buf = new u8[numbytes];
-        if (stream->read(buf.get(), numbytes) != numbytes) {
+        if (s_BufferSize < len) {
+            try {
+                s_Buffer.reset(new char[len]);
+                s_BufferSize = len;
+            } catch (const std::bad_alloc&) {
+                ReportOutOfMemory();
+                return false;
+            }
+        }
+        if (stream->read(s_Buffer.get(), len) != len) {
             return false;
         }
         sq_pushroottable(v);
-        sq_pushstring(v, (const SQChar*)buf.get(), numbytes); // assuming sizeof(SQChar) == 1
+        sq_pushstring(v, (const SQChar*)s_Buffer.get(), len);
         if (!SQ_SUCCEEDED(sq_get(v, -2))) {
             sq_settop(v, oldtop);
             return false;
@@ -8103,7 +4935,7 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
             sq_settop(v, oldtop);
             return false;
         }
-        sq_pushstring(v, _SC("_load"), -1);
+        sq_pushstring(v, "_load", -1);
         if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
             sq_settop(v, oldtop);
             return false;
@@ -8115,10 +4947,7 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
             return false;
         }
         sq_pushroottable(v); // this
-        if (!BindStream(v, stream)) { // push the input stream
-            sq_settop(v, oldtop);
-            return false;
-        }
+        BindStream(v, stream); // push the input stream
         if (!SQ_SUCCEEDED(sq_call(v, 2, SQTrue, SQTrue))) {
             sq_settop(v, oldtop);
             return false;
@@ -8145,17 +4974,17 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 {
     // get stream
     if (!IsStream(v, 2)) {
-        return sq_throwerror(v, _SC("invalid type of parameter <stream>"));
+        THROW_ERROR("Invalid type of parameter stream")
     }
     IStream* stream = GetStream(v, 2);
     assert(stream);
     if (!stream->isOpen() || !stream->isReadable()) {
-        return sq_throwerror(v, _SC("invalid parameter <stream>"));
+        THROW_ERROR("Invalid stream")
     }
 
     // load
     if (!LoadObject(v, stream)) {
-        return sq_throwerror(v, _SC("deserialization failed"));
+        THROW_ERROR("deserialization failed")
     }
     return 1;
 }
@@ -8169,8 +4998,9 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 //-----------------------------------------------------------------
 static void compiler_error_handler(HSQUIRRELVM v, const SQChar* desc, const SQChar* source, SQInteger line, SQInteger column)
 {
-    assert(g_log);
-    g_log->error() << "Script error in '" << source << "' line " << line << ": " << desc;
+    if (g_Log) {
+        g_Log->error() << "Script error in '" << source << "' line " << line << ": " << desc;
+    }
 }
 
 //-----------------------------------------------------------------
@@ -8180,8 +5010,8 @@ static SQInteger runtime_error_handler(HSQUIRRELVM v)
     sq_tostring(v, 2);
     const SQChar* error = _SC("N/A");
     sq_getstring(v, -1, &error);
-    assert(g_log);
-    g_log->error() << "Script error: " << error;
+    assert(g_Log);
+    g_Log->error() << "Script error: " << error;
     sq_settop(v, top);
     return 0;
 }
@@ -8189,86 +5019,172 @@ static SQInteger runtime_error_handler(HSQUIRRELVM v)
 //-----------------------------------------------------------------
 static void print_func(HSQUIRRELVM v, const SQChar* format, ...)
 {
-    static int bufsize = 256;
-    static ArrayPtr<char> buf = new char[bufsize];
+    static ArrayPtr<char> s_Buffer;
+    static int s_BufferSize = 0;
+    if (s_BufferSize == 0) { // one-time initialization
+        try {
+            s_Buffer.reset(new char[256]);
+            s_BufferSize = 256;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return;
+        }
+    }
+
     va_list arglist;
     va_start(arglist, format);
-    int size = vsnprintf(buf.get(), bufsize, format, arglist);
-    while (size < 0 || size >= bufsize) {
-        bufsize = bufsize * 2;
-        buf = new char[bufsize];
-        size = vsnprintf(buf.get(), bufsize, format, arglist);
+
+    int size = vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
+#ifdef _MSC_VER // VC's vsnprintf has different behavior than POSIX's vsnprintf
+    while (size < 0 || size == s_BufferSize) { // buffer was not big enough to hold the output string + terminating null character
+        try {
+            s_Buffer.reset(new char[s_BufferSize * 2]); // double buffer size until vsnprintf succeeds
+            s_BufferSize = s_BufferSize * 2;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return;
+        }
+        va_start(arglist, format);
+        size = vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
     }
+#else
+    if (size < 0) { // formatting error occurred
+        return;
+    } else if (size >= s_BufferSize) { // buffer was not big enough to hold the output string + terminating null character
+        try {
+            s_Buffer.reset(new char[size + 1]); // allocate a big enough buffer and try again
+            s_BufferSize = size + 1;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return;
+        }
+        va_start(arglist, format);
+        vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
+    }
+#endif
     va_end(arglist);
-    assert(g_log);
-    g_log->debug() << "Print: " << (const char*)buf.get();
+    if (g_Log) {
+        g_Log->debug() << "Print: " << (const char*)s_Buffer.get();
+    }
 }
 
-namespace script {
+//-----------------------------------------------------------------
+bool InitScript(const Log& log)
+{
+    assert(!g_VM);
 
-    namespace internal {
+    // print Squirrel version
+    log.info() << "Using Squirrel " << (SQUIRREL_VERSION_NUMBER / 100)       \
+                                "." << ((SQUIRREL_VERSION_NUMBER / 10) % 10) \
+                                "." << (SQUIRREL_VERSION_NUMBER % 10);
 
-        //-----------------------------------------------------------------
-        bool InitScript(const Log& log)
-        {
-            assert(!g_sqvm);
+    log.info() << "Opening Squirrel VM";
+    g_VM = sq_open(1024);
+    if (!g_VM) {
+        log.error("Failed opening Squirrel VM");
+        return false;
+    }
+    sq_setcompilererrorhandler(g_VM, compiler_error_handler);
+    sq_newclosure(g_VM, runtime_error_handler, 0);
+    sq_seterrorhandler(g_VM);
+    sq_setprintfunc(g_VM, print_func, print_func);
 
-            // print Squirrel version
-            log.info() << "Using Squirrel " << (SQUIRREL_VERSION_NUMBER / 100)       \
-                                        "." << ((SQUIRREL_VERSION_NUMBER / 10) % 10) \
-                                        "." << (SQUIRREL_VERSION_NUMBER % 10);
+    sq_pushroottable(g_VM); // push root table
 
-            log.info() << "Opening Squirrel VM";
-            g_sqvm = sq_open(1024);
-            if (!g_sqvm) {
-                log.error("Failed opening Squirrel VM");
-                return false;
+    // register standard math library
+    log.info() << "Registering Squirrel's standard math library";
+    if (!SQ_SUCCEEDED(sqstd_register_mathlib(g_VM)) {
+        log.error("Failed registering Squirrel's standard math library");
+        goto lib_init_failed;
+    }
+
+    // register standard string library (string formatting and regular expression matching routines)
+    log.info() << "Registering Squirrel's standard string library";
+    if (!SQ_SUCCEEDED(sqstd_register_stringlib(g_VM)) {
+        log.error("Failed registering Squirrel's standard string library");
+        goto lib_init_failed;
+    }
+
+    sq_poptop(g_VM); // pop root table
+
+    g_Log = &log; // will be used to output compiler and runtime script errors
+
+    return true;
+
+lib_init_failed:
+    sq_close(g_VM);
+    g_VM = 0;
+    return false;
+}
+
+//-----------------------------------------------------------------
+void DeinitScript(const Log& log)
+{
+    assert(g_VM);
+    if (g_VM) {
+        log.info() << "Closing Squirrel VM");
+        sq_close(g_VM);
+        g_VM = 0;
+    }
+    g_Log = 0;
+}
+
+//-----------------------------------------------------------------
+bool RunMain(const Log& log, const std::string& script, const std::vector<std::string>& args)
+{
+    int old_top = sq_gettop(g_VM); // save stack top
+
+    // load script
+    if (DoesFileExist(filename)) {
+        FilePtr file = OpenFile(filename);
+        if (LoadObject(g_VM, file.get())) { // try loading as bytecode
+            if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
+                log.error() << "Error loading script bytecode";
+                goto error;
             }
-            sq_setcompilererrorhandler(g_sqvm, compiler_error_handler);
-            sq_newclosure(g_sqvm, runtime_error_handler, 0);
-            sq_seterrorhandler(g_sqvm);
-            sq_setprintfunc(g_sqvm, print_func, print_func);
-
-            sq_pushroottable(g_sqvm); // push root table
-
-            // register standard math library
-            log.info() << "Registering Squirrel's standard math library";
-            if (!SQ_SUCCEEDED(sqstd_register_mathlib(g_sqvm)) {
-                log.error("Failed registering Squirrel's standard math library");
-                goto lib_init_failed;
+        } else { // try compiling as plain text
+            file->seek(0); // LoadObject changed the stream position, set it back to beginning
+            if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
+                log.error() << "Error compiling script";
+                goto error;
             }
-
-            // register standard string library (string formatting and regular expression matching routines)
-            log.info() << "Registering Squirrel's standard string library";
-            if (!SQ_SUCCEEDED(sqstd_register_stringlib(g_sqvm)) {
-                log.error("Failed registering Squirrel's standard string library");
-                goto lib_init_failed;
-            }
-
-            sq_poptop(g_sqvm); // pop root table
-
-            g_log = &log; // will be used to output compiler and runtime script errors
-
-            return true;
-
-        lib_init_failed:
-            sq_close(g_sqvm);
-            g_sqvm = 0;
-            return false;
         }
+    } else { // file does not exist
+        log.error() << "Script does not exist";
+        goto error;
+    }
 
-        //-----------------------------------------------------------------
-        void DeinitScript(const Log& log)
-        {
-            assert(g_sqvm);
-            if (g_sqvm) {
-                log.info() << "Closing Squirrel VM");
-                sq_close(g_sqvm);
-                g_sqvm = 0;
-            }
-            g_log = 0;
-        }
+    // run script
+    sq_pushroottable(g_VM); // this
+    if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQFalse, SQTrue))) {
+        log.error() << "Error executing script";
+        goto error;
+    }
+    sq_settop(g_VM, old_top); // restore stack top
 
-    } // namespace internal
+    // call main
+    sq_pushroottable(g_VM);
+    sq_pushstring(g_VM, "main", -1);
+    if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
+        log.error() << "Entry point main not defined";
+        goto error;
+    }
+    if (!sq_gettype(g_VM, -1) == OT_CLOSURE) {
+        log.error() << "Entry point main is not a function";
+        goto error;
+    }
+    sq_pushroottable(g_VM); // this
+    for (int i = 0; i < args.size(); i++) {
+        sq_pushstring(g_VM, args[i].c_str(), -1);
+    }
+    if (!SQ_SUCCEEDED(sq_call(g_VM, 1 + args.size(), SQFalse, SQTrue))) {
+        log.error() << "Error calling main";
+        goto error;
+    }
+    sq_settop(g_VM, old_top); // restore stack top
+    return true;
 
-} // namespace script
+error:
+    sq_settop(g_VM, old_top); // restore stack top
+    return false;
+}

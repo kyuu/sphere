@@ -15,16 +15,19 @@ public:
     int   getSize() const;
     int   getCapacity() const;
     u8*   getBuffer();
-    u8&   at(int pos);
+    u8&   at(int idx);
     void  clear();
     void  reset(u8 val = 0);
-    bool  assign(const void* buf, int size);
-    bool  append(const void* buf, int size);
+    void  assign(const void* buf, int size);
+    void  append(const void* buf, int size);
     Blob* concat(const void* buf, int size);
-    bool  resize(int size);
+    void  resize(int size);
     void  bloat();
-    bool  reserve(int size);
-    bool  doubleCapacity();
+    void  reserve(int size);
+    void  doubleCapacity();
+    void  swap2();
+    void  swap4();
+    void  swap8();
 
     // IStream implementation
     bool isOpen() const;

@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstring>
 #include <cmath>
+#include "../error.hpp"
+#include "endian.hpp"
 #include "Blob.hpp"
 
 
@@ -9,17 +11,16 @@ Blob*
 Blob::Create(int size)
 {
     assert(size >= 0);
-    if (size >= 0) {
-        try {
-            BlobPtr blob = new Blob();
-            if (size > 0 && !blob->resize(size)) {
-                return 0;
-            }
-            return blob.release();
-        } catch (const std::bad_alloc& e) {
+    try {
+        BlobPtr blob = new Blob();
+        if (size > 0) {
+            blob->resize(size);
         }
+        return blob.release();
+    } catch (const std::bad_alloc&) {
+        ReportOutOfMemory();
+        return 0;
     }
-    return 0;
 }
 
 //-----------------------------------------------------------------
@@ -28,18 +29,14 @@ Blob::Create(const void* buf, int size)
 {
     assert(buf);
     assert(size >= 0);
-    if (buf && size > 0) {
-        try {
-            BlobPtr blob = new Blob();
-            if (!blob->assign(buf, size)) {
-                return 0;
-            }
-            return blob.release();
-        } catch (const std::bad_alloc& e) {
-            return 0;
-        }
+    try {
+        BlobPtr blob = new Blob();
+        blob->assign(buf, size);
+        return blob.release();
+    } catch (const std::bad_alloc& e) {
+        ReportOutOfMemory();
+        return 0;
     }
-    return 0;
 }
 
 //-----------------------------------------------------------------
@@ -62,11 +59,11 @@ Blob::~Blob()
 
 //-----------------------------------------------------------------
 u8&
-Blob::at(int pos)
+Blob::at(int idx)
 {
     assert(_size > 0);
-    assert(pos >= 0 && pos < _size);
-    return _buffer[pos];
+    assert(idx >= 0 && idx < _size);
+    return _buffer[idx];
 }
 
 //-----------------------------------------------------------------
@@ -91,32 +88,24 @@ Blob::reset(u8 val)
 }
 
 //-----------------------------------------------------------------
-bool
+void
 Blob::assign(const void* buf, int size)
 {
     assert(buf);
     assert(size > 0);
-    if (buf && size > 0 && resize(size)) {
-        memcpy(_buffer, buf, size);
-        return true;
-    }
-    return false;
+    resize(size);
+    memcpy(_buffer, buf, size);
 }
 
 //-----------------------------------------------------------------
-bool
+void
 Blob::append(const void* buf, int size)
 {
     assert(buf);
     assert(size > 0);
-    if (buf && size > 0) {
-        int old_size = getSize();
-        if (resize(old_size + size)) {
-            memcpy(_buffer + old_size, buf, size);
-            return true;
-        }
-    }
-    return false;
+    int old_size = _size;
+    resize(old_size + size);
+    memcpy(_buffer + old_size, buf, size);
 }
 
 //-----------------------------------------------------------------
@@ -125,27 +114,21 @@ Blob::concat(const void* buf, int size)
 {
     assert(buf);
     assert(size > 0);
-    if (buf && size > 0) {
-        Blob* result = New(_size + size);
-        if (getSize() > 0) {
-            memcpy(result->getBuffer(), _buffer, _size);
-        }
-        memcpy(result->getBuffer() + _size, buf, size);
-        return result;
+    Blob* result = Create(_size + size);
+    if (_size > 0) {
+        memcpy(result->getBuffer(), _buffer, _size);
     }
-    return 0;
+    memcpy(result->getBuffer() + _size, buf, size);
+    return result;
 }
 
 //-----------------------------------------------------------------
-bool
+void
 Blob::resize(int size)
 {
     assert(size >= 0);
-    if (size >= 0 && reserve(size)) {
-        _size = size;
-        return true;
-    }
-    return false;
+    reserve(size);
+    _size = size;
 }
 
 //-----------------------------------------------------------------
@@ -156,7 +139,7 @@ Blob::bloat()
 }
 
 //-----------------------------------------------------------------
-bool
+void
 Blob::reserve(int size)
 {
     assert(size >= 0);
@@ -171,17 +154,43 @@ Blob::reserve(int size)
             _buffer = new_buffer;
             _reserved = new_reserved;
         } catch (const std::bad_alloc& e) {
-            return false;
+            ReportOutOfMemory();
         }
     }
-    return true;
 }
 
 //-----------------------------------------------------------------
-bool
+void
 Blob::doubleCapacity()
 {
-    return reserve(_reserved * 2);
+    reserve(_reserved * 2);
+}
+
+//-----------------------------------------------------------------
+void
+Blob::swap2()
+{
+    if (_buffer && _size % 2 == 0) {
+        ::swap2(_buffer, _size / 2);
+    }
+}
+
+//-----------------------------------------------------------------
+void
+Blob::swap4()
+{
+    if (_buffer && _size % 4 == 0) {
+        ::swap4(_buffer, _size / 4);
+    }
+}
+
+//-----------------------------------------------------------------
+void
+Blob::swap8()
+{
+    if (_buffer && _size % 8 == 0) {
+        ::swap8(_buffer, _size / 8);
+    }
 }
 
 //-----------------------------------------------------------------

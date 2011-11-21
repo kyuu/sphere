@@ -4,21 +4,13 @@
 #include "../Log.hpp"
 
 
-namespace system {
+int  GetTime();
+int  GetTicks();
+int  GetRandom();
+void Sleep(int ms);
 
-    int  GetTime();
-    int  GetTicks();
-    int  GetRandom();
-    void Sleep(int millis);
-
-    namespace internal {
-
-        bool InitSystem(const Log& log);
-        void DeinitSystem(const Log& log);
-
-    } // namespace internal
-
-} // namespace system
+bool InitSystem(const Log& log);
+void DeinitSystem(const Log& log);
 
 
 #endif

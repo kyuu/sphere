@@ -17,7 +17,7 @@ public:
 
     static Canvas* Create(int width, int height, const RGBA* pixels = 0);
 
-    Canvas* cloneSection(const Recti& section);
+    Canvas* cloneSection(const Recti& sec);
     int   getWidth() const;
     int   getHeight() const;
     int   getPitch() const;
@@ -27,14 +27,15 @@ public:
     void  setPixel(int x, int y, const RGBA& color);
     const RGBA& getPixelByIndex(int index) const;
     void  setPixelByIndex(int index, const RGBA& color);
-    bool  resize(int width, int height);
+    void  resize(int width, int height);
     void  fill(const RGBA& color);
     const Recti& getClipRect() const;
-    bool  setClipRect(const Recti& rect);
+    bool  setClipRect(const Recti& clipRect);
 
 private:
-    Canvas();
+    Canvas(int width, int height);
     virtual ~Canvas();
+    void internalInit(int width, int height);
 
 private:
     int   _width;

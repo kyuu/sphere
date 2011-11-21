@@ -10,42 +10,34 @@
 #include "ITexture.hpp"
 
 
-namespace video {
+void GetSupportedVideoModes(std::vector<Dim2i>& out);
+bool OpenWindow(int width, int height, bool fullscreen);
+int  GetWindowWidth();
+int  GetWindowHeight();
+bool IsWindowFullscreen();
+bool SetWindowFullscreen(bool fullscreen);
+const char* GetWindowTitle();
+void SetWindowTitle(const char* title);
+void SetWindowIcon(Canvas* canvas);
+void SwapFrameBuffers();
+bool GetClipRect(Recti& out);
+void SetClipRect(const Recti& clip);
+ITexture* CreateTexture(Canvas* pixels);
+ITexture* CloneFrameBuffer(const Recti& section);
 
-    void GetSupportedVideoModes(std::vector<Dim2i>& out);
-    bool OpenWindow(int width, int height, bool fullscreen);
-    int  GetWindowWidth();
-    int  GetWindowHeight();
-    bool IsWindowFullscreen();
-    bool SetWindowFullscreen(bool fullscreen);
-    const char* GetWindowTitle();
-    void SetWindowTitle(const char* title);
-    void SetWindowIcon(Canvas* canvas);
-    void SwapFrameBuffers();
-    bool GetClipRect(Recti& out);
-    void SetClipRect(const Recti& clip);
-    ITexture* CreateTexture(Canvas* canvas);
-    ITexture* CloneFrameBuffer(Recti* section = 0);
+// 2D rendering
+void DrawPoint(const Vec2i& pos, const RGBA& col);
+void DrawLine(Vec2i pos[2], RGBA col[2]);
+void DrawTriangle(Vec2i pos[3], RGBA col[3]);
+void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], const RGBA& mask = RGBA(255, 255, 255));
+void DrawRect(const Vec2i& pos, int width, int height, RGBA col[4]);
+void DrawImage(ITexture* texture, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
+void DrawSubImage(ITexture* texture, const Recti& src_rect, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
+void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
+void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
 
-    // 2D
-    void DrawPoint(const Vec2i& pos, const RGBA& col);
-    void DrawLine(Vec2i pos[2], RGBA col[2]);
-    void DrawTriangle(Vec2i pos[3], RGBA col[3]);
-    void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], RGBA* mask_col = 0);
-    void DrawRect(const Recti& rect, RGBA col[4]);
-    void DrawImage(ITexture* texture, const Vec2i& pos, RGBA* mask_col = 0);
-    void DrawSubImage(ITexture* texture, const Recti& src_rect, const Vec2i& pos, RGBA* mask_col = 0);
-    void DrawImageQuad(ITexture* texture, Vec2i pos[4], RGBA* mask_col = 0);
-    void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], RGBA* mask_col = 0);
-
-    namespace internal {
-
-        bool InitVideo(const Log& log);
-        void DeinitVideo(const Log& log);
-
-    } // namespace internal
-
-} // namespace video
+bool InitVideo(const Log& log);
+void DeinitVideo(const Log& log);
 
 
 #endif

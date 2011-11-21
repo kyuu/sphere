@@ -4,34 +4,27 @@
 #include <vector>
 #include <string>
 #include "../Log.hpp"
-#include "IFile.hpp"
+#include "../io/IFile.hpp"
 
 
-namespace filesystem {
+bool   ComplementPath(std::string& path);
+IFile* OpenFile(const std::string& filename, int mode = IFile::IN);
+bool   DoesFileExist(const std::string& filename);
+bool   IsRegularFile(const std::string& filename);
+bool   IsDirectory(const std::string& filename);
+int    GetFileModTime(const std::string& filename);
+bool   CreateDirectory(const std::string& directory);
+bool   RemoveFile(const std::string& filename);
+bool   RenameFile(const std::string& filenameFrom, const std::string& filenameTo);
+bool   GetFileList(const std::string& directory, std::vector<std::string>& fileList);
 
-    IFile* OpenFile(const std::string& p, int mode = IFile::IN);
-    bool   Exists(const std::string& p);
-    bool   IsRegularFile(const std::string& p);
-    bool   IsDirectory(const std::string& p);
-    int    GetLastWriteTime(const std::string& p);
-    bool   CreateDirectory(const std::string& p);
-    bool   Remove(const std::string& p);
-    bool   Rename(const std::string& p1, const std::string& p2);
-    bool   GetFileList(const std::string& p, std::vector<std::string>& out);
-
-    namespace internal {
-
-        bool InitFilesystem(const Log& log);
-        void DeinitFilesystem(const Log& log);
-        const std::string& GetEnginePath();
-        const std::string& GetCurrentPath();
-        bool SetCurrentPath(const std::string& p);
-        const std::string& GetDataPath();
-        bool SetDataPath(const std::string& p);
-
-    } // namespace internal
-
-} // namespace filesystem
+bool InitFilesystem(const Log& log);
+void DeinitFilesystem(const Log& log);
+const std::string& GetEnginePath();
+const std::string& GetCurrentPath();
+bool SetCurrentPath(const std::string& p);
+const std::string& GetDataPath();
+bool SetDataPath(const std::string& p);
 
 
 #endif
