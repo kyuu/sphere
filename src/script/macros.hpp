@@ -2,12 +2,17 @@
 #define MACROS_HPP
 
 
-#define THROW_ERROR(msg) return sq_throwerror(v, msg);
+#define THROW_ERROR(msg)                                return ThrowError(msg);
+#define THROW_ERROR1(msg, arg1)                         return ThrowError(msg, arg1);
+#define THROW_ERROR2(msg, arg1, arg2)                   return ThrowError(msg, arg1, arg2);
+#define THROW_ERROR3(msg, arg1, arg2, arg3)             return ThrowError(msg, arg1, arg2, arg3);
+#define THROW_ERROR4(msg, arg1, arg2, arg3, arg4)       return ThrowError(msg, arg1, arg2, arg3, arg4);
+#define THROW_ERROR5(msg, arg1, arg2, arg3, arg4, arg5) return ThrowError(msg, arg1, arg2, arg3, arg4, arg5);
 
 #define NARGS() (sq_gettop(v) - 1)
 
-#define CHECK_NARGS(n)      if (sq_gettop(v) != n + 1) { return sq_throwerror(v, "Invalid number of arguments"); }
-#define CHECK_MIN_NARGS(n)  if (sq_gettop(v)  < n + 1) { return sq_throwerror(v, "Invalid number of arguments"); }
+#define CHECK_NARGS(n)      if (sq_gettop(v) != n + 1) { return ThrowError("Invalid number of arguments, expected %d", n); }
+#define CHECK_MIN_NARGS(n)  if (sq_gettop(v)  < n + 1) { return ThrowError("Invalid number of arguments, expected at least %d", n); }
 
 #define ARG_IS_NULL(idx)    (sq_gettype(v, idx + 1) == OT_NULL)
 #define ARG_IS_BOOL(idx)    (sq_gettype(v, idx + 1) == OT_BOOL)
@@ -16,35 +21,35 @@
 #define ARG_IS_NUMERIC(idx) ((sq_gettype(v, idx + 1) & SQOBJECT_NUMERIC) != 0)
 #define ARG_IS_STRING(idx)  (sq_gettype(v, idx + 1) == OT_STRING)
 
-#define GET_ARG_BOOL(idx, name)                 SQBool          name;       if (SQ_FAILED(sq_getbool(v, idx + 1, &name)))       { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_INT(idx, name)                  SQInteger       name;       if (SQ_FAILED(sq_getinteger(v, idx + 1, &name)))    { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_FLOAT(idx, name)                SQFloat         name;       if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)))      { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_STRING(idx, name)               const SQChar*   name = 0;   if (SQ_FAILED(sq_getstring(v, idx + 1, &name)))     { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_STREAM(idx, name)               IStream*        name = GetStream(idx + 1);      if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_BLOB(idx, name)                 Blob*           name = GetBlob(idx + 1);        if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_FILE(idx, name)                 IFile*          name = GetFile(idx + 1);        if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_RECT(idx, name)                 Recti*          name = GetRect(idx + 1);        if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_VEC2(idx, name)                 Vec2i*          name = GetVec2(idx + 1);        if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_CANVAS(idx, name)               Canvas*         name = GetCanvas(idx + 1);      if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_TEXTURE(idx, name)              ITexture*       name = GetTexture(idx + 1);     if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_SOUND(idx, name)                ISound*         name = GetSound(idx + 1);       if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_SOUNDEFFECT(idx, name)          ISoundEffect*   name = GetSoundEffect(idx + 1); if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
-#define GET_ARG_ZSTREAM(idx, name)              ZStream*        name = GetZStream(idx + 1);     if (!name) { return sq_throwerror(v, "Invalid argument " #idx); }
+#define GET_ARG_BOOL(idx, name)                 SQBool          name;       if (SQ_FAILED(sq_getbool(v, idx + 1, &name)))       { return ThrowError("Invalid argument %d '%s', expected a bool",    idx, name); }
+#define GET_ARG_INT(idx, name)                  SQInteger       name;       if (SQ_FAILED(sq_getinteger(v, idx + 1, &name)))    { return ThrowError("Invalid argument %d '%s', expected a integer", idx, name); }
+#define GET_ARG_FLOAT(idx, name)                SQFloat         name;       if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)))      { return ThrowError("Invalid argument %d '%s', expected a float",   idx, name); }
+#define GET_ARG_STRING(idx, name)               const SQChar*   name = 0;   if (SQ_FAILED(sq_getstring(v, idx + 1, &name)))     { return ThrowError("Invalid argument %d '%s', expected a string",  idx, name); }
+#define GET_ARG_STREAM(idx, name)               IStream*        name = GetStream(idx + 1);      if (!name) { return ThrowError("Invalid argument %d '%s', expected a Stream instance",      idx, name); }
+#define GET_ARG_BLOB(idx, name)                 Blob*           name = GetBlob(idx + 1);        if (!name) { return ThrowError("Invalid argument %d '%s', expected a Blob instance",        idx, name); }
+#define GET_ARG_FILE(idx, name)                 IFile*          name = GetFile(idx + 1);        if (!name) { return ThrowError("Invalid argument %d '%s', expected a File instance",        idx, name); }
+#define GET_ARG_RECT(idx, name)                 Recti*          name = GetRect(idx + 1);        if (!name) { return ThrowError("Invalid argument %d '%s', expected a Rect instance",        idx, name); }
+#define GET_ARG_VEC2(idx, name)                 Vec2i*          name = GetVec2(idx + 1);        if (!name) { return ThrowError("Invalid argument %d '%s', expected a Vec2 instance",        idx, name); }
+#define GET_ARG_CANVAS(idx, name)               Canvas*         name = GetCanvas(idx + 1);      if (!name) { return ThrowError("Invalid argument %d '%s', expected a Canvas instance",      idx, name); }
+#define GET_ARG_TEXTURE(idx, name)              ITexture*       name = GetTexture(idx + 1);     if (!name) { return ThrowError("Invalid argument %d '%s', expected a Texture instance",     idx, name); }
+#define GET_ARG_SOUND(idx, name)                ISound*         name = GetSound(idx + 1);       if (!name) { return ThrowError("Invalid argument %d '%s', expected a Sound instance",       idx, name); }
+#define GET_ARG_SOUNDEFFECT(idx, name)          ISoundEffect*   name = GetSoundEffect(idx + 1); if (!name) { return ThrowError("Invalid argument %d '%s', expected a SoundEffect instance", idx, name); }
+#define GET_ARG_ZSTREAM(idx, name)              ZStream*        name = GetZStream(idx + 1);     if (!name) { return ThrowError("Invalid argument %d '%s', expected a ZStream instance",     idx, name); }
 
-#define GET_OPTARG_BOOL(idx, name, defval)      SQBool          name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getbool(v, idx + 1, &name)))    { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_INT(idx, name, defval)       SQInteger       name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getinteger(v, idx + 1, &name))) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_FLOAT(idx, name, defval)     SQFloat         name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)))   { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_STRING(idx, name, defval)    const SQChar*   name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getstring(v, idx + 1, &name)))  { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_STREAM(idx, name)            IStream*        name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetStream(idx + 1);       if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_FILE(idx, name)              IFile*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetFile(idx + 1);         if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_BLOB(idx, name)              Blob*           name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetBlob(idx + 1);         if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_CANVAS(idx, name)            Canvas*         name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetCanvas(idx + 1);       if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_RECT(idx, name)              Recti*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetRect(idx + 1);         if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_VEC2(idx, name)              Vec2i*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetVec2(idx + 1);         if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_TEXTURE(idx, name)           ITexture*       name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetTexture(idx + 1);      if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_SOUND(idx, name)             ISound*         name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetSound(idx + 1);        if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_SOUNDEFFECT(idx, name)       ISoundEffect*   name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetSoundEffect(idx + 1);  if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
-#define GET_OPTARG_ZSTREAM(idx, name)           ZStream*        name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetZStream(idx + 1);      if (!name) { return sq_throwerror(v, "Invalid argument " #idx); } }
+#define GET_OPTARG_BOOL(idx, name, defval)      SQBool          name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getbool(v, idx + 1, &name)))    { return ThrowError("Invalid argument %d '%s', expected a bool",    idx, name); } }
+#define GET_OPTARG_INT(idx, name, defval)       SQInteger       name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getinteger(v, idx + 1, &name))) { return ThrowError("Invalid argument %d '%s', expected a integer", idx, name); } }
+#define GET_OPTARG_FLOAT(idx, name, defval)     SQFloat         name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)))   { return ThrowError("Invalid argument %d '%s', expected a float",   idx, name); } }
+#define GET_OPTARG_STRING(idx, name, defval)    const SQChar*   name = defval;  if (sq_gettop(v) >= idx + 1) { if (SQ_FAILED(sq_getstring(v, idx + 1, &name)))  { return ThrowError("Invalid argument %d '%s', expected a string",  idx, name); } }
+#define GET_OPTARG_STREAM(idx, name)            IStream*        name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetStream(idx + 1);       if (!name) { return ThrowError("Invalid argument %d '%s', expected a Stream instance",      idx, name); } }
+#define GET_OPTARG_FILE(idx, name)              IFile*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetFile(idx + 1);         if (!name) { return ThrowError("Invalid argument %d '%s', expected a Blob instance",        idx, name); } }
+#define GET_OPTARG_BLOB(idx, name)              Blob*           name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetBlob(idx + 1);         if (!name) { return ThrowError("Invalid argument %d '%s', expected a File instance",        idx, name); } }
+#define GET_OPTARG_CANVAS(idx, name)            Canvas*         name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetCanvas(idx + 1);       if (!name) { return ThrowError("Invalid argument %d '%s', expected a Rect instance",        idx, name); } }
+#define GET_OPTARG_RECT(idx, name)              Recti*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetRect(idx + 1);         if (!name) { return ThrowError("Invalid argument %d '%s', expected a Vec2 instance",        idx, name); } }
+#define GET_OPTARG_VEC2(idx, name)              Vec2i*          name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetVec2(idx + 1);         if (!name) { return ThrowError("Invalid argument %d '%s', expected a Canvas instance",      idx, name); } }
+#define GET_OPTARG_TEXTURE(idx, name)           ITexture*       name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetTexture(idx + 1);      if (!name) { return ThrowError("Invalid argument %d '%s', expected a Texture instance",     idx, name); } }
+#define GET_OPTARG_SOUND(idx, name)             ISound*         name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetSound(idx + 1);        if (!name) { return ThrowError("Invalid argument %d '%s', expected a Sound instance",       idx, name); } }
+#define GET_OPTARG_SOUNDEFFECT(idx, name)       ISoundEffect*   name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetSoundEffect(idx + 1);  if (!name) { return ThrowError("Invalid argument %d '%s', expected a SoundEffect instance", idx, name); } }
+#define GET_OPTARG_ZSTREAM(idx, name)           ZStream*        name = 0;       if (sq_gettop(v) >= idx + 1) { name = GetZStream(idx + 1);      if (!name) { return ThrowError("Invalid argument %d '%s', expected a ZStream instance",     idx, name); } }
 
 #define RET_VOID()                                              return 0;
 #define RET_NULL()              sq_pushnull(v);                 return 1;

@@ -63,6 +63,85 @@ static HSQOBJECT g_SoundClass;
 static HSQOBJECT g_SoundEffectClass;
 static HSQOBJECT g_ZStreamClass;
 
+//-----------------------------------------------------------------
+SQRESULT ThrowError(const char* format, ...)
+{
+    static ArrayPtr<char> s_Buffer;
+    static int s_BufferSize = 0;
+    if (s_BufferSize == 0) { // one-time initialization
+        try {
+            s_Buffer.reset(new char[512]);
+            s_BufferSize = 512;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return SQ_ERROR;
+        }
+    }
+
+    // format error message
+    va_list arglist;
+    va_start(arglist, format);
+    int size = vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
+#ifdef _MSC_VER // VC's vsnprintf has different behavior than POSIX's vsnprintf
+    while (size < 0 || size == s_BufferSize) { // buffer was not big enough to hold the output string + terminating null character
+        try {
+            s_Buffer.reset(new char[s_BufferSize * 2]); // double buffer size until vsnprintf succeeds
+            s_BufferSize = s_BufferSize * 2;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return SQ_ERROR;
+        }
+        va_start(arglist, format);
+        size = vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
+    }
+#else
+    if (size < 0) { // formatting error occurred
+        return;
+    } else if (size >= s_BufferSize) { // buffer was not big enough to hold the output string + terminating null character
+        try {
+            s_Buffer.reset(new char[size + 1]); // allocate a big enough buffer and try again
+            s_BufferSize = size + 1;
+        } catch (const std::bad_alloc&) {
+            ReportOutOfMemory();
+            return;
+        }
+        va_start(arglist, format);
+        vsnprintf(s_Buffer.get(), s_BufferSize, format, arglist);
+    }
+#endif
+    va_end(arglist);
+
+    // get call information
+    // funcname: name of the throwing function (the topmost function on squirrel's call stack)
+    // source: name of the script from where the function was called (directly or indirectly)
+    // line: the line in the source
+    std::string funcname = "N/A";
+    std::string source = "N/A";
+    int line = -1;
+    SQStackInfos si;
+    if (SQ_SUCCEEDED(sq_stackinfos(g_VM, 1, &si))) {
+        funcname = si.funcname;
+        for (int i = 1; SQ_SUCCEEDED(sq_stackinfos(g_VM, i, &si)); i++) {
+            if (si.line != -1) {
+                source = si.source;
+                line   = si.line;
+                break;
+            }
+        }
+    }
+
+    // build final error message
+    std::ostringstream oss;
+    oss << "Error in '" << source;
+    oss << "' in line " << line;
+    oss << " while executing " << funcname;
+    oss << ": " << (const char*)s_Buffer.get();
+
+    // pass error message to squirrel triggering an exception
+    sq_pushstring(g_VM, oss.str().c_str(), -1);
+    return sq_throwobject(g_VM);
+}
+
 /******************************************************************
  *                                                                *
  *                             CORE                               *
@@ -4238,7 +4317,7 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 static void compiler_error_handler(HSQUIRRELVM v, const SQChar* desc, const SQChar* source, SQInteger line, SQInteger column)
 {
     if (g_Log) {
-        g_Log->error() << "Script error in '" << source << "' line " << line << ": " << desc;
+        g_Log->error() << "Script compile error in '" << source << "' line " << line << ": " << desc;
     }
 }
 
@@ -4250,7 +4329,7 @@ static SQInteger runtime_error_handler(HSQUIRRELVM v)
     const SQChar* error = "N/A";
     sq_getstring(v, -1, &error);
     assert(g_Log);
-    g_Log->error() << "Script error: " << error;
+    g_Log->error() << "Script runtime error: " << error;
     sq_settop(v, top);
     return 0;
 }
