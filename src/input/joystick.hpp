@@ -31,17 +31,9 @@ int  GetJoystickAxis(int joy, int axis);
 int  GetJoystickHat(int joy, int hat);
 
 // force feedback
-struct ForceEffect {
-    i32 direction;   // direction of the force in degrees (0 - 360)
-    i32 duration;    // duration of the effect
-    i32 start;       // start strength
-    i32 end;         // end strength
-};
-
 bool HasJoystickForceFeedback(int joy);
-int  UploadJoystickForceEffect(int joy, const ForceEffect& effect);
+int  UploadJoystickForceEffect(int joy, int direction, int duration, int startLevel, int endLevel);
 bool PlayJoystickForceEffect(int joy, int effect, int times = 1);
-int  UpdateJoystickForceEffect(int joy, int effect, const ForceEffect& new_data);
 bool StopJoystickForceEffect(int joy, int effect);
 bool StopAllJoystickForceEffects(int joy);
 void RemoveJoystickForceEffect(int joy, int effect);

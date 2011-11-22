@@ -61,9 +61,6 @@ static HSQOBJECT g_Vec2Class;
 static HSQOBJECT g_TextureClass;
 static HSQOBJECT g_SoundClass;
 static HSQOBJECT g_SoundEffectClass;
-static HSQOBJECT g_ForceEffectClass;
-static HSQOBJECT g_CipherClass;
-static HSQOBJECT g_HashClass;
 static HSQOBJECT g_ZStreamClass;
 
 /******************************************************************
@@ -3220,13 +3217,16 @@ static SQInteger script_HasJoystickForceFeedback(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// UploadJoystickForceEffect(joy, effect)
+// UploadJoystickForceEffect(joy, direction, duration, startLevel [, endLevel = startLevel])
 static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
 {
-    CHECK_NARGS(2)
+    CHECK_MIN_NARGS(4)
     GET_ARG_INT(1, joy)
-    GET_ARG_FORCEEFFECT(2, effect)
-    int effect_id = UploadJoystickForceEffect(joy, *effect);
+    GET_ARG_INT(2, direction)
+    GET_ARG_INT(3, duration)
+    GET_ARG_INT(4, startLevel)
+    GET_OPTARG_INT(5, endLevel, startLevel)
+    int effect_id = UploadJoystickForceEffect(joy, direction, duration, startLevel, endLevel);
     if (effect_id < 0) {
         THROW_ERROR("Could not upload joystick force effect")
     }
@@ -3234,7 +3234,7 @@ static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// PlayJoystickForceEffect(joy, effect [, times])
+// PlayJoystickForceEffect(joy, effect [, times = 1])
 static SQInteger script_PlayJoystickForceEffect(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(2)
@@ -3245,21 +3245,6 @@ static SQInteger script_PlayJoystickForceEffect(HSQUIRRELVM v)
         THROW_ERROR("Could not play joystick force effect")
     }
     RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// UpdateJoystickForceEffect(joy, effect, new_data)
-static SQInteger script_UpdateJoystickForceEffect(HSQUIRRELVM v)
-{
-    CHECK_NARGS(3)
-    GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, effect)
-    GET_ARG_FORCEEFFECT(3, new_data)
-    int effect_id = UpdateJoystickForceEffect(joy, effect, *new_data);
-    if (effect_id < 0) {
-        THROW_ERROR("Could not update joystick force effect")
-    }
-    RET_INT(effect_id)
 }
 
 //-----------------------------------------------------------------
@@ -3294,183 +3279,6 @@ static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
     GET_ARG_INT(2, effect)
     RemoveJoystickForceEffect(joy, effect);
     RET_VOID()
-}
-
-/************************** FORCEEFFECT ***************************/
-
-#define SETUP_FORCEEFFECT_OBJECT() \
-    ForceEffect* This = 0; \
-    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FORCEEFFECT))) { \
-        THROW_ERROR("Invalid type of environment object, expected a ForceEffect instance") \
-    }
-
-//-----------------------------------------------------------------
-// ForceEffect()
-static SQInteger script_forceeffect_constructor(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    memset(This, 0, sizeof(ForceEffect));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._get(index)
-static SQInteger script_forceeffect__get(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, index)
-    if (strcmp(index, "direction") == 0) {
-        RET_INT(This->direction)
-    } else if (strcmp(index, "duration") == 0) {
-        RET_INT(This->duration)
-    } else if (strcmp(index, "start") == 0) {
-        RET_INT(This->start)
-    } else if (strcmp(index, "end") == 0) {
-        RET_INT(This->end)
-    } else {
-        // index not found
-        sq_pushnull(v);
-        return sq_throwobject(v);
-    }
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._set(index, value)
-static SQInteger script_forceeffect__set(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    CHECK_NARGS(2)
-    GET_ARG_STRING(1, index)
-    if (strcmp(index, "direction") == 0) {
-        GET_ARG_INT(2, value)
-        This->direction = value;
-    } else if (strcmp(index, "duration") == 0) {
-        GET_ARG_INT(2, value)
-        This->duration = value;
-    } else if (strcmp(index, "start") == 0) {
-        GET_ARG_INT(2, value)
-        This->start = value;
-    } else if (strcmp(index, "end") == 0) {
-        GET_ARG_INT(2, value)
-        This->end = value;
-    } else {
-        // index not found
-        sq_pushnull(v);
-        return sq_throwobject(v);
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._typeof()
-static SQInteger script_forceeffect__typeof(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    RET_STRING("ForceEffect")
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._cloned(original)
-static SQInteger script_forceeffect__cloned(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    CHECK_NARGS(1)
-    GET_ARG_FORCEEFFECT(1, original)
-    memcpy(This, original, sizeof(ForceEffect));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._tostring()
-static SQInteger script_forceeffect__tostring(HSQUIRRELVM v)
-{
-    SETUP_FORCEEFFECT_OBJECT()
-    std::ostringstream oss;
-    oss << "<ForceEffect instance at " << This;
-    oss << ")>";
-    RET_STRING(oss.str().c_str())
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._dump(instance, stream)
-static SQInteger script_forceeffect__dump(HSQUIRRELVM v)
-{
-    CHECK_NARGS(2)
-    GET_ARG_FORCEEFFECT(1, instance)
-    GET_ARG_STREAM(2, stream)
-
-    if (!stream->isOpen() || !stream->isWriteable()) {
-        THROW_ERROR("Invalid output stream")
-    }
-
-    // write class name
-    const char* class_name = "ForceEffect";
-    int class_name_size = strlen(class_name);
-    if (!writei32l(stream, (i32)class_name_size) || stream->write(class_name, class_name_size) != class_name_size) {
-        goto throw_write_error;
-    }
-
-    // write instance
-    if (!writei32l(stream, instance->direction) ||
-        !writei32l(stream, instance->duration)  ||
-        !writei32l(stream, instance->start)     ||
-        !writei32l(stream, instance->end))
-    {
-        goto throw_write_error;
-    }
-
-    RET_VOID()
-
-throw_write_error:
-    THROW_ERROR("Write error")
-}
-
-//-----------------------------------------------------------------
-// ForceEffect._load(stream)
-static SQInteger script_forceeffect__load(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STREAM(1, stream)
-
-    if (!stream->isOpen() || !stream->isReadable()) {
-        THROW_ERROR("Invalid input stream")
-    }
-
-    // read instance
-    ForceEffect instance;
-    if (!readi32l(stream, instance.direction) ||
-        !readi32l(stream, instance.duration)  ||
-        !readi32l(stream, instance.start)     ||
-        !readi32l(stream, instance.end))
-    {
-        THROW_ERROR("Read error")
-    }
-
-    RET_FORCEEFFECT(instance)
-}
-
-//-----------------------------------------------------------------
-void BindForceEffect(const ForceEffect& effect)
-{
-    assert(g_ForceEffectClass._type == OT_CLASS);
-    sq_pushobject(g_VM, g_ForceEffectClass); // push forceeffect class
-    sq_createinstance(g_VM, -1);
-    sq_remove(g_VM, -2); // pop forceeffect class
-    SQUserPointer p = 0;
-    sq_getinstanceup(g_VM, -1, &p, 0);
-    assert(p);
-    memcpy(p, &effect, sizeof(ForceEffect));
-}
-
-//-----------------------------------------------------------------
-ForceEffect* GetForceEffect(SQInteger idx)
-{
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_FORCEEFFECT))) {
-        return (ForceEffect*)p;
-    }
-    return 0;
 }
 
 /******************************************************************

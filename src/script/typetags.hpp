@@ -21,9 +21,6 @@
 #define TT_SOUND                ((SQUserPointer)500)
 #define TT_SOUNDEFFECT          ((SQUserPointer)501)
 
-// input
-#define TT_FORCEEFFECT          ((SQUserPointer)600)
-
 // compression
 #define TT_ZSTREAM              ((SQUserPointer)800)
 

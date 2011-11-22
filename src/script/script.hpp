@@ -43,8 +43,6 @@ void    BindSound(ISound* sound);
 ISound* GetSound(SQInteger idx);
 void    BindSoundEffect(ISoundEffect* soundeffect);
 ISoundEffect* GetSoundEffect(SQInteger idx);
-void    BindForceEffect(const ForceEffect& effect);
-ForceEffect* GetForceEffect(SQInteger idx);
 void    BindZStream(ZStream* stream);
 ZStream* GetZStream(SQInteger idx);
 

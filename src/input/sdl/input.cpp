@@ -862,32 +862,26 @@ bool HasJoystickForceFeedback(int joy)
 }
 
 //-----------------------------------------------------------------
-static void setup_sdl_haptic_effect(SDL_HapticEffect& sdl_haptic_effect, const ForceEffect& force_effect)
-{
-    memset(&sdl_haptic_effect, 0, sizeof(SDL_HapticEffect));
-    if (force_effect.start == force_effect.end) {
-        sdl_haptic_effect.constant.type             = SDL_HAPTIC_CONSTANT;
-        sdl_haptic_effect.constant.length           = (force_effect.duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)force_effect.duration);
-        sdl_haptic_effect.constant.level            = (Sint16)force_effect.start;
-        sdl_haptic_effect.constant.direction.type   = SDL_HAPTIC_POLAR;
-        sdl_haptic_effect.constant.direction.dir[0] = (Sint32)force_effect.direction;
-    } else {
-        sdl_haptic_effect.ramp.type             = SDL_HAPTIC_RAMP;
-        sdl_haptic_effect.ramp.length           = (force_effect.duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)force_effect.duration);
-        sdl_haptic_effect.ramp.start            = (Sint16)force_effect.start;
-        sdl_haptic_effect.ramp.end              = (Sint16)force_effect.end;
-        sdl_haptic_effect.ramp.direction.type   = SDL_HAPTIC_POLAR;
-        sdl_haptic_effect.ramp.direction.dir[0] = (Sint32)force_effect.direction;
-    }
-}
-
-//-----------------------------------------------------------------
-int UploadJoystickForceEffect(int joy, const ForceEffect& effect)
+int UploadJoystickForceEffect(int joy, int direction, int duration, int startLevel, int endLevel)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
-        SDL_HapticEffect sdl_haptic_effect;
-        setup_sdl_haptic_effect(sdl_haptic_effect, effect);
-        int effect_id = SDL_HapticNewEffect(g_Joysticks[joy].haptic, &sdl_haptic_effect);
+        SDL_HapticEffect effect;
+        memset(&effect, 0, sizeof(SDL_HapticEffect));
+        if (startLevel == endLevel) {
+            effect.constant.type             = SDL_HAPTIC_CONSTANT;
+            effect.constant.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
+            effect.constant.level            = (Sint16)startLevel;
+            effect.constant.direction.type   = SDL_HAPTIC_POLAR;
+            effect.constant.direction.dir[0] = (Sint32)direction;
+        } else {
+            effect.ramp.type             = SDL_HAPTIC_RAMP;
+            effect.ramp.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
+            effect.ramp.start            = (Sint16)startLevel;
+            effect.ramp.end              = (Sint16)endLevel;
+            effect.ramp.direction.type   = SDL_HAPTIC_POLAR;
+            effect.ramp.direction.dir[0] = (Sint32)direction;
+        }
+        int effect_id = SDL_HapticNewEffect(g_Joysticks[joy].haptic, &effect);
         if (effect_id >= 0) {
             return effect_id;
         }
@@ -903,20 +897,6 @@ bool PlayJoystickForceEffect(int joy, int effect, int times)
         return SDL_HapticRunEffect(g_Joysticks[joy].haptic, effect, iters) == 0;
     }
     return false;
-}
-
-//-----------------------------------------------------------------
-int UpdateJoystickForceEffect(int joy, int effect, const ForceEffect& new_data)
-{
-    if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
-        SDL_HapticEffect sdl_haptic_effect;
-        setup_sdl_haptic_effect(sdl_haptic_effect, new_data);
-        int effect_id = SDL_HapticUpdateEffect(g_Joysticks[joy].haptic, effect, &sdl_haptic_effect);
-        if (effect_id >= 0) {
-            return effect_id;
-        }
-    }
-    return -1;
 }
 
 //-----------------------------------------------------------------

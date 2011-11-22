@@ -292,25 +292,6 @@
     BindSoundEffect(expr); \
     return 1;
 
-#define GET_ARG_FORCEEFFECT(idx, name) \
-    ForceEffect* name = GetForceEffect(idx + 1); \
-    if (!name) { \
-        return sq_throwerror(v, "Invalid argument " #idx); \
-    }
-
-#define GET_OPTARG_FORCEEFFECT(idx, name) \
-    ForceEffect* name = 0; \
-    if (sq_gettop(v) >= idx + 1) { \
-        name = GetForceEffect(idx + 1); \
-        if (!name) { \
-            return sq_throwerror(v, "Invalid argument " #idx); \
-        } \
-    }
-
-#define RET_FORCEEFFECT(expr) \
-    BindForceEffect(expr); \
-    return 1;
-
 #define GET_ARG_ZSTREAM(idx, name) \
     ZStream* name = GetZStream(idx + 1); \
     if (!name) { \
