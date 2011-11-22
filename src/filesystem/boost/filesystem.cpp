@@ -213,7 +213,7 @@ bool InitFilesystem(const Log& log)
 }
 
 //-----------------------------------------------------------------
-void DeinitFilesystem(const Log& log)
+void DeinitFilesystem()
 {
     // NO-OP
 }
@@ -231,12 +231,12 @@ std::string GetCurrentPath()
 }
 
 //-----------------------------------------------------------------
-bool SetCurrentPath(const std::string& p)
+bool SetCurrentPath(const std::string& path)
 {
     try {
         fs::current_path(path);
         return true;
-    } catch (const fs::filesystem_error& e) {
+    } catch (...) {
         return false;
     }
 }

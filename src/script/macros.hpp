@@ -7,12 +7,12 @@
 
 #define CHECK_NARGS(n) \
     if (sq_gettop(v) != n + 1) { \
-        return ThrowError(v, "Invalid number of arguments, expected %d", n); \
+        return sq_throwerror(v, "Invalid number of arguments"); \
     }
 
 #define CHECK_MIN_NARGS(n) \
     if (sq_gettop(v) < n + 1) { \
-        return ThrowError(v, "Invalid number of arguments, expected at least %d", n); \
+        return sq_throwerror(v, "Invalid number of arguments"); \
     }
 
 #define ARG_IS_NULL(idx)    (sq_gettype(v, idx + 1) == OT_NULL)
@@ -33,7 +33,7 @@
 #define RET_VOID() \
     return 0;
 
-#define RET_NULL(expr) \
+#define RET_NULL() \
     sq_pushnull(v); \
     return 1;
 
@@ -45,21 +45,35 @@
     sq_pushbool(v, SQFalse); \
     return 1;
 
+#define GET_ARG_BOOL(idx, name) \
+    SQBool name; \
+    if (SQ_FAILED(sq_getbool(v, idx + 1, &name))) { \
+        return sq_throwerror(v, "Invalid argument " #idx); \
+    }
+
+#define GET_OPTARG_BOOL(idx, name, defval) \
+    SQBool name = defval; \
+    if (sq_gettop(v) >= idx + 1) { \
+        if (SQ_FAILED(sq_getbool(v, idx + 1, &name))) { \
+            return sq_throwerror(v, "Invalid argument " #idx); \
+        } \
+    }
+
 #define RET_BOOL(expr) \
     sq_pushbool(v, expr); \
     return 1;
 
 #define GET_ARG_INT(idx, name) \
     SQInteger name; \
-    if (SQ_FAILED(sq_getinteger(v, idx + 1, &name)) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected integer", idx, #name); \
+    if (SQ_FAILED(sq_getinteger(v, idx + 1, &name))) { \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_INT(idx, name, defval) \
     SQInteger name = defval; \
     if (sq_gettop(v) >= idx + 1) { \
-        if (SQ_FAILED(sq_getinteger(v, idx + 1, &name)) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected integer", idx, #name); \
+        if (SQ_FAILED(sq_getinteger(v, idx + 1, &name))) { \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
@@ -69,15 +83,15 @@
 
 #define GET_ARG_FLOAT(idx, name) \
     SQFloat name; \
-    if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected float", idx, #name); \
+    if (SQ_FAILED(sq_getfloat(v, idx + 1, &name))) { \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_FLOAT(idx, name, defval) \
     SQFloat name = defval; \
     if (sq_gettop(v) >= idx + 1) { \
-        if (SQ_FAILED(sq_getfloat(v, idx + 1, &name)) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected float", idx, #name); \
+        if (SQ_FAILED(sq_getfloat(v, idx + 1, &name))) { \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
@@ -87,15 +101,15 @@
 
 #define GET_ARG_STRING(idx, name) \
     const SQChar* name = 0; \
-    if (SQ_FAILED(sq_getstring(v, idx + 1, &name)) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected string", idx, #name); \
+    if (SQ_FAILED(sq_getstring(v, idx + 1, &name))) { \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_STRING(idx, name, defval) \
     const SQChar* name = defval; \
     if (sq_gettop(v) >= idx + 1) { \
-        if (SQ_FAILED(sq_getstring(v, idx + 1, &name)) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected string", idx, #name); \
+        if (SQ_FAILED(sq_getstring(v, idx + 1, &name))) { \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
@@ -108,301 +122,216 @@
     return 1;
 
 #define GET_ARG_STREAM(idx, name) \
-    IStream* name = GetStream(v, idx + 1); \
+    IStream* name = GetStream(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Stream instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_STREAM(idx, name) \
     IStream* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetStream(v, idx + 1); \
+        name = GetStream(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Stream instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_STREAM(expr) \
-    if (!BindStream(v, expr)) { \
-        return ThrowError(v, "BindStream failed")); \
-    } \
+    BindStream(expr); \
     return 1;
 
 #define GET_ARG_FILE(idx, name) \
-    IFile* name = GetFile(v, idx + 1); \
+    IFile* name = GetFile(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected File instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_FILE(idx, name) \
     IFile* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetFile(v, idx + 1); \
+        name = GetFile(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected File instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_FILE(expr) \
-    if (!BindFile(v, expr)) { \
-        return ThrowError(v, "BindFile failed")); \
-    } \
+    BindFile(expr); \
     return 1;
 
 #define GET_ARG_BLOB(idx, name) \
-    Blob* name = GetBlob(v, idx + 1); \
+    Blob* name = GetBlob(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Blob instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_BLOB(idx, name) \
     Blob* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetBlob(v, idx + 1); \
+        name = GetBlob(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Blob instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_BLOB(expr) \
-    if (!BindBlob(v, expr)) { \
-        return ThrowError(v, "BindBlob failed")); \
-    } \
+    BindBlob(expr); \
     return 1;
 
 #define GET_ARG_CANVAS(idx, name) \
-    Canvas* name = GetCanvas(v, idx + 1); \
+    Canvas* name = GetCanvas(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Canvas instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_CANVAS(idx, name) \
     Canvas* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetCanvas(v, idx + 1); \
+        name = GetCanvas(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Canvas instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_CANVAS(expr) \
-    if (!BindCanvas(v, expr)) { \
-        return ThrowError(v, "BindCanvas failed")); \
-    } \
-    return 1;
-
-#define GET_ARG_RGBA(idx, name) \
-    RGBA* name = GetRGBA(v, idx + 1); \
-    if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected RGBA instance", idx, #name); \
-    }
-
-#define GET_OPTARG_RGBA(idx, name) \
-    RGBA* name = 0; \
-    if (sq_gettop(v) >= idx + 1) { \
-        name = GetRGBA(v, idx + 1); \
-        if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected RGBA instance", idx, #name); \
-        } \
-    }
-
-#define RET_RGBA(expr) \
-    if (!BindRGBA(v, expr)) { \
-        return ThrowError(v, "BindRGBA failed")); \
-    } \
+    BindCanvas(expr); \
     return 1;
 
 #define GET_ARG_RECT(idx, name) \
-    Recti* name = GetRect(v, idx + 1); \
+    Recti* name = GetRect(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Rect instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_RECT(idx, name) \
     Recti* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetRect(v, idx + 1); \
+        name = GetRect(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Rect instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_RECT(expr) \
-    if (!BindRect(v, expr)) { \
-        return ThrowError(v, "BindRect failed")); \
-    } \
+    BindRect(expr); \
     return 1;
 
 #define GET_ARG_VEC2(idx, name) \
-    Vec2i* name = GetVec2(v, idx + 1); \
+    Vec2i* name = GetVec2(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Vec2 instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_VEC2(idx, name) \
     Vec2i* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetVec2(v, idx + 1); \
+        name = GetVec2(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Vec2 instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_VEC2(expr) \
-    if (!BindVec2(v, expr)) { \
-        return ThrowError(v, "BindVec2 failed")); \
-    } \
+    BindVec2(expr); \
     return 1;
 
 #define GET_ARG_TEXTURE(idx, name) \
-    ITexture* name = GetTexture(v, idx + 1); \
+    ITexture* name = GetTexture(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Texture instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_TEXTURE(idx, name) \
     ITexture* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetTexture(v, idx + 1); \
+        name = GetTexture(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Texture instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_TEXTURE(expr) \
-    if (!BindTexture(v, expr)) { \
-        return ThrowError(v, "BindTexture failed")); \
-    } \
+    BindTexture(expr); \
     return 1;
 
 #define GET_ARG_SOUND(idx, name) \
-    ISound* name = GetSound(v, idx + 1); \
+    ISound* name = GetSound(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Sound instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_SOUND(idx, name) \
     ISound* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetSound(v, idx + 1); \
+        name = GetSound(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Sound instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_SOUND(expr) \
-    if (!BindSound(v, expr)) { \
-        return ThrowError(v, "BindSound failed")); \
-    } \
+    BindSound(expr); \
     return 1;
 
 #define GET_ARG_SOUNDEFFECT(idx, name) \
-    ISoundEffect* name = GetSoundEffect(v, idx + 1); \
+    ISoundEffect* name = GetSoundEffect(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected SoundEffect instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_SOUNDEFFECT(idx, name) \
     ISoundEffect* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetSoundEffect(v, idx + 1); \
+        name = GetSoundEffect(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected SoundEffect instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_SOUNDEFFECT(expr) \
-    if (!BindSoundEffect(v, expr)) { \
-        return ThrowError(v, "BindSoundEffect failed")); \
-    } \
+    BindSoundEffect(expr); \
     return 1;
 
 #define GET_ARG_FORCEEFFECT(idx, name) \
-    ForceEffect* name = GetForceEffect(v, idx + 1); \
+    ForceEffect* name = GetForceEffect(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected ForceEffect instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_FORCEEFFECT(idx, name) \
     ForceEffect* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetForceEffect(v, idx + 1); \
+        name = GetForceEffect(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected ForceEffect instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_FORCEEFFECT(expr) \
-    if (!BindForceEffect(v, expr)) { \
-        return ThrowError(v, "BindForceEffect failed")); \
-    } \
-    return 1;
-
-#define GET_ARG_CIPHER(idx, name) \
-    ICipher* name = GetCipher(v, idx + 1); \
-    if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Cipher instance", idx, #name); \
-    }
-
-#define GET_OPTARG_CIPHER(idx, name) \
-    ICipher* name = 0; \
-    if (sq_gettop(v) >= idx + 1) { \
-        name = GetCipher(v, idx + 1); \
-        if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Cipher instance", idx, #name); \
-        } \
-    }
-
-#define RET_CIPHER(expr) \
-    if (!BindCipher(v, expr)) { \
-        return ThrowError(v, "BindCipher failed")); \
-    } \
-    return 1;
-
-#define GET_ARG_HASHER(idx, name) \
-    IHash* name = GetHash(v, idx + 1); \
-    if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected Hash instance", idx, #name); \
-    }
-
-#define GET_OPTARG_HASHER(idx, name) \
-    IHash* name = 0; \
-    if (sq_gettop(v) >= idx + 1) { \
-        name = GetHash(v, idx + 1); \
-        if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected Hash instance", idx, #name); \
-        } \
-    }
-
-#define RET_HASHER(expr) \
-    if (!BindHash(v, expr)) { \
-        return ThrowError(v, "BindHash failed")); \
-    } \
+    BindForceEffect(expr); \
     return 1;
 
 #define GET_ARG_ZSTREAM(idx, name) \
-    ZStream* name = GetZStream(v, idx + 1); \
+    ZStream* name = GetZStream(idx + 1); \
     if (!name) { \
-        return ThrowError(v, "Invalid type of argument %d, '%s', expected ZStream instance", idx, #name); \
+        return sq_throwerror(v, "Invalid argument " #idx); \
     }
 
 #define GET_OPTARG_ZSTREAM(idx, name) \
     ZStream* name = 0; \
     if (sq_gettop(v) >= idx + 1) { \
-        name = GetZStream(v, idx + 1); \
+        name = GetZStream(idx + 1); \
         if (!name) { \
-            return ThrowError(v, "Invalid type of optional argument %d, '%s', expected ZStream instance", idx, #name); \
+            return sq_throwerror(v, "Invalid argument " #idx); \
         } \
     }
 
 #define RET_ZSTREAM(expr) \
-    if (!BindZStream(v, expr)) { \
-        return ThrowError(v, "BindZStream failed")); \
-    } \
+    BindZStream(expr); \
     return 1;
 
 #define THROW_ERROR(msg) \
-    return ThrowError(v, msg);
+    return sq_throwerror(v, msg);
 
 
 #endif

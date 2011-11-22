@@ -24,12 +24,8 @@
 // input
 #define TT_FORCEEFFECT          ((SQUserPointer)600)
 
-// encryption
-#define TT_CIPHER               ((SQUserPointer)700)
-#define TT_HASH                 ((SQUserPointer)710)
-
 // compression
-#define TT_COMPRESSIONSTREAM    ((SQUserPointer)800)
+#define TT_ZSTREAM              ((SQUserPointer)800)
 
 
 #endif

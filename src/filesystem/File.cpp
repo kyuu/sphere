@@ -1,4 +1,5 @@
 #include <cassert>
+#include <stdexcept>
 #include "../error.hpp"
 #include "File.hpp"
 
@@ -9,7 +10,7 @@ File::Create()
 {
     try {
         return new File();
-    } catch (const std::bad_alloc& e) {
+    } catch (const std::bad_alloc&) {
         ReportOutOfMemory();
         return 0;
     }
@@ -140,7 +141,10 @@ File::read(void* buffer, int size)
 {
     assert(buffer);
     assert(size >= 0);
-    if (!_file || !_readable || !buffer || size <= 0) {
+    if (!_file || !isReadable()) {
+        return -1;
+    }
+    if (size == 0) {
         return 0;
     }
     return fread(buffer, 1, size, _file);
@@ -152,7 +156,10 @@ File::write(const void* buffer, int size)
 {
     assert(buffer);
     assert(size >= 0);
-    if (!_file || !_writeable || !buffer || size <= 0) {
+    if (!_file || !isWriteable()) {
+        return -1;
+    }
+    if (size == 0) {
         return 0;
     }
     return fwrite(buffer, 1, size, _file);

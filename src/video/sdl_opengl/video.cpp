@@ -1,9 +1,10 @@
 #include <cassert>
 #include <cmath>
 #include <sstream>
-#include <GL.h>
 #include <SDL.h>
+#include <SDL_OpenGL.h>
 #include "../../version.hpp"
+#include "../../error.hpp"
 #include "../video.hpp"
 #include "Texture.hpp"
 
@@ -42,13 +43,13 @@ void GetSupportedVideoModes(std::vector<Dim2i>& out)
             if (is_sdl_pixel_format_supported(mode.format)) {
                 // see if the video mode is already listed
                 bool vmode_not_yet_listed = true;
-                for (int j = 0; j < out.size(); j++) {
-                    if (out[j].width == mode.width && out[j].height == mode.height) {
+                for (int j = 0; j < (int)out.size(); j++) {
+                    if (out[j].width == mode.w && out[j].height == mode.h) {
                         vmode_not_yet_listed = false;
                     }
                 }
                 if (vmode_not_yet_listed) {
-                    out.push_back(Dim2i(mode.width, mode.height));
+                    out.push_back(Dim2i(mode.w, mode.h));
                 }
             }
         }
@@ -58,7 +59,7 @@ void GetSupportedVideoModes(std::vector<Dim2i>& out)
 //-----------------------------------------------------------------
 bool OpenWindow(int width, int height, bool fullscreen)
 {
-    if (!g_window && width * heigh > 0) {
+    if (!g_window && width * height > 0) {
         // build default window title
         std::ostringstream oss;
         oss << "Sphere " << SPHERE_VERSION_STRING;
@@ -70,7 +71,7 @@ bool OpenWindow(int width, int height, bool fullscreen)
         }
 
         // open window
-        g_window = SDL_CreateWindow(oss.str.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+        g_window = SDL_CreateWindow(oss.str().c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
         if (!g_window) {
             return false;
         }
@@ -186,7 +187,7 @@ void SetWindowIcon(Canvas* canvas)
         SDL_Surface* surface = SDL_CreateRGBSurfaceFrom((void*)canvas->getPixels(),
                                                         canvas->getWidth(),
                                                         canvas->getHeight(),
-                                                        canvas->getNumBytesPerPixel() * 8,
+                                                        Canvas::GetNumBytesPerPixel() * 8,
                                                         canvas->getPitch(),
                                                         rmask,
                                                         gmask,
@@ -265,24 +266,20 @@ ITexture* CreateTexture(Canvas* canvas)
 }
 
 //-----------------------------------------------------------------
-ITexture* CloneFrameBuffer(Recti* section)
+ITexture* CloneFrameBufferSection(const Recti& section)
 {
     if (!g_window) {
         return 0;
     }
 
-    Recti rect(0, 0, g_window_width - 1, g_window_height - 1);
-    if (section) {
-        if (!rect.contains(*section)) {
-            return 0;
-        }
-        rect = *section;
+    if (!Recti(0, 0, g_window_width - 1, g_window_height - 1).contains(section)) {
+        return 0;
     }
 
-    int x = rect.getX();
-    int y = rect.getY();
-    int width  = rect.getWidth();
-    int height = rect.getHeight();
+    int x = section.getX();
+    int y = section.getY();
+    int width  = section.getWidth();
+    int height = section.getHeight();
 
     double log2_width  = log10((double)width)  / log10(2.0);
     double log2_height = log10((double)height) / log10(2.0);
@@ -313,7 +310,7 @@ ITexture* CloneFrameBuffer(Recti* section)
 }
 
 //-----------------------------------------------------------------
-bool GetClipRect(Recti& out)
+bool GetFrameBufferClipRect(Recti& out)
 {
     if (g_window) {
         GLint cliprect[4];
@@ -328,7 +325,7 @@ bool GetClipRect(Recti& out)
 }
 
 //-----------------------------------------------------------------
-void SetClipRect(const Recti& clip)
+void SetFrameBufferClipRect(const Recti& clip)
 {
     if (g_window) {
         glScissor(clip.ul.x, (g_window_height - clip.ul.y) - clip.getHeight(), clip.getWidth(), clip.getHeight());
@@ -546,22 +543,9 @@ void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], co
 }
 
 //-----------------------------------------------------------------
-bool InitVideo()
+bool InitVideo(const Log& log)
 {
-    // print some OpenGL information
-    log.info() << "Using OpenGL "     << glGetString(GL_VERSION);
-    log.info() << "OpenGL Vendor:   " << glGetString(GL_VENDOR);
-    log.info() << "OpenGL Renderer: " << glGetString(GL_RENDERER);
-
-    // print SDL version
-    SDL_version sdl_linked_version;
-    SDL_GetVersion(&sdl_linked_version);
-    log.info() << "Using SDL " << (int)sdl_linked_version.major \
-               << "."          << (int)sdl_linked_version.minor \
-               << "."          << (int)sdl_linked_version.patch;
-
     // initialize SDL if not already initialized
-    log.info() << "Initializing SDL (if not already initialized)";
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         log.error() << "Failed initializing SDL: " << SDL_GetError();
         return false;

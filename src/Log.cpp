@@ -27,7 +27,7 @@ Log::close()
 void
 Log::write(ReportingLevel level, const std::string& msg) const
 {
-    if (_file && level >= _reportingLevel) {
+    if (_file && level <= _reportingLevel) {
         switch (level) {
         case INFO:    fprintf(_file, "Info   : "); break;
         case WARNING: fprintf(_file, "Warning: "); break;

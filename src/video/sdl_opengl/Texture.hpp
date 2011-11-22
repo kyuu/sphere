@@ -1,9 +1,8 @@
 #ifndef TEXTURE_HPP
 #define TEXTURE_HPP
 
-#include <GL.h>
+#include <SDL_OpenGL.h>
 #include "../../common/RefImpl.hpp"
-#include "../../graphics/Canvas.hpp"
 #include "../ITexture.hpp"
 
 
@@ -26,7 +25,7 @@ private:
     ~Texture();
 
 private:
-    GLuint _texture_id;
+    GLuint _tex;
     int _tex_width;
     int _tex_height;
     int _width;
@@ -37,7 +36,7 @@ private:
 inline GLuint
 Texture::getTexID() const
 {
-    return _texture_id;
+    return _tex;
 }
 
 //-----------------------------------------------------------------

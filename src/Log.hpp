@@ -5,6 +5,11 @@
 #include <sstream>
 #include <cstdio>
 
+// seems like something defines ERROR leading to Compiler Error C2059
+#ifdef ERROR
+#undef ERROR
+#endif
+
 
 class Log {
 public:
@@ -18,16 +23,19 @@ public:
 private:
     class Message {
     public:
-        Message(ReportingLevel level, Log& log) : _reportingLevel(level), _log(log) { }
+        Message(ReportingLevel level, const Log& log) : _reportingLevel(level), _log(log) { }
         ~Message() { _log.write(_reportingLevel, _msg.str()); }
         template<typename T> Message& operator<<(T t) { _msg << t; return *this; }
     private:
         std::ostringstream _msg;
         ReportingLevel _reportingLevel;
-        Log& _log;
+        const Log& _log;
     };
 
 public:
+    Log();
+    ~Log();
+
     Message info() const;
     Message warning() const;
     Message error() const;
@@ -40,14 +48,8 @@ public:
     void write(ReportingLevel level, const std::string& msg) const;
 
 private:
-    Log();
-    explicit Log(const std::string& filename);
-    ~Log();
-
     FILE* _file;
     ReportingLevel _reportingLevel;
-
-    static Log _instance;
 };
 
 //-----------------------------------------------------------------
@@ -55,6 +57,12 @@ inline
 Log::Log()
     : _file(0)
     , _reportingLevel(DEBUG)
+{
+}
+
+//-----------------------------------------------------------------
+inline
+Log::~Log()
 {
 }
 
@@ -73,28 +81,28 @@ Log::setReportingLevel(ReportingLevel level)
 }
 
 //-----------------------------------------------------------------
-inline Message
+inline Log::Message
 Log::info() const
 {
     return Message(INFO, *this);
 }
 
 //-----------------------------------------------------------------
-inline Message
+inline Log::Message
 Log::warning() const
 {
     return Message(WARNING, *this);
 }
 
 //-----------------------------------------------------------------
-inline Message
+inline Log::Message
 Log::error() const
 {
     return Message(ERROR, *this);
 }
 
 //-----------------------------------------------------------------
-inline Message
+inline Log::Message
 Log::debug() const
 {
     return Message(DEBUG, *this);

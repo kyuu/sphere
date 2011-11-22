@@ -6,9 +6,9 @@
 #include "../common/RefPtr.hpp"
 #include "../common/RefImpl.hpp"
 #include "../common/IRefCounted.hpp"
-#include "../filesystem/IStream.hpp"
+#include "../io/IStream.hpp"
+#include "../core/Rect.hpp"
 #include "RGBA.hpp"
-#include "Rect.hpp"
 
 
 class Canvas : public RefImpl<IRefCounted> {
@@ -17,12 +17,12 @@ public:
 
     static Canvas* Create(int width, int height, const RGBA* pixels = 0);
 
-    Canvas* cloneSection(const Recti& sec);
     int   getWidth() const;
     int   getHeight() const;
     int   getPitch() const;
     int   getNumPixels() const;
     RGBA* getPixels();
+    Canvas* cloneSection(const Recti& section);
     const RGBA& getPixel(int x, int y) const;
     void  setPixel(int x, int y, const RGBA& color);
     const RGBA& getPixelByIndex(int index) const;
@@ -33,7 +33,7 @@ public:
     bool  setClipRect(const Recti& clipRect);
 
 private:
-    Canvas(int width, int height);
+    Canvas();
     virtual ~Canvas();
     void internalInit(int width, int height);
 

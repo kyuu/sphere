@@ -1,10 +1,8 @@
-#include "system.hpp"
-
 #include <ctime>
 #include <cstdlib>
-namespace winapi {
+#define WIN32_MEAN_AND_LEAN
 #include <windows.h>
-}
+#include "../system.hpp"
 
 
 //-----------------------------------------------------------------
@@ -20,7 +18,7 @@ int GetTime()
 //-----------------------------------------------------------------
 int GetTicks()
 {
-    return (int)(winapi::GetTickCount());
+    return (int)GetTickCount();
 }
 
 //-----------------------------------------------------------------
@@ -32,14 +30,14 @@ int GetRandom()
 //-----------------------------------------------------------------
 void Sleep(int ms)
 {
-    winapi::Sleep(ms);
+    ::Sleep(ms);
 }
 
 //-----------------------------------------------------------------
 bool InitSystem(const Log& log)
 {
     // initialize tick count
-    g_ticks_at_start = winapi::GetTickCount();
+    g_ticks_at_start = GetTickCount();
 
     // seed the random number generator
     srand(g_ticks_at_start);
@@ -48,7 +46,7 @@ bool InitSystem(const Log& log)
 }
 
 //-----------------------------------------------------------------
-void DeinitSystem(const Log& log)
+void DeinitSystem()
 {
     // NO-OP
 }

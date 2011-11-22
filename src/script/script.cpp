@@ -10,12 +10,9 @@
 #include "../common/ArrayPtr.hpp"
 #include "../Log.hpp"
 #include "../error.hpp"
-#include "../core/Rect.hpp"
-#include "../core/Vec2.hpp"
 #include "../io/endian.hpp"
+#include "../io/io.hpp"
 #include "../io/Blob.hpp"
-#include "../graphics/RGBA.hpp"
-#include "../graphics/Canvas.hpp"
 #include "../image/image.hpp"
 #include "../system/system.hpp"
 #include "../filesystem/filesystem.hpp"
@@ -49,7 +46,7 @@
 static HSQUIRRELVM g_VM = 0;
 
 // log instance used by the print function
-static Log* g_Log = 0;
+static const Log* g_Log = 0;
 
 // holds all scripts which have been loaded through RequireScript
 static std::vector<std::string> g_ScriptRegistry;
@@ -67,7 +64,7 @@ static HSQOBJECT g_SoundEffectClass;
 static HSQOBJECT g_ForceEffectClass;
 static HSQOBJECT g_CipherClass;
 static HSQOBJECT g_HashClass;
-static HSQOBJECT g_CompressionStreamClass;
+static HSQOBJECT g_ZStreamClass;
 
 /******************************************************************
  *                                                                *
@@ -127,7 +124,7 @@ static SQInteger script_rect_getIntersection(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // Rect.containsPoint(x, y)
-static SQInteger script_rect_isPointInside(HSQUIRRELVM v)
+static SQInteger script_rect_containsPoint(HSQUIRRELVM v)
 {
     SETUP_RECT_OBJECT()
     CHECK_NARGS(2)
@@ -138,7 +135,7 @@ static SQInteger script_rect_isPointInside(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // Rect.containsRect(rect)
-static SQInteger script_rect_isPointInside(HSQUIRRELVM v)
+static SQInteger script_rect_containsRect(HSQUIRRELVM v)
 {
     SETUP_RECT_OBJECT()
     CHECK_NARGS(1)
@@ -290,23 +287,11 @@ static SQInteger script_rect__load(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsRect(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_RECT;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void BindRect(const Recti& rect)
 {
     assert(g_RectClass._type == OT_CLASS);
     sq_pushobject(g_VM, g_RectClass); // push rect class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop rect class
     SQUserPointer p = 0;
     sq_getinstanceup(g_VM, -1, &p, 0);
@@ -399,9 +384,9 @@ static SQInteger script_vec2_rotateBy(HSQUIRRELVM v)
     GET_ARG_INT(1, degrees)
     GET_OPTARG_VEC2(2, center)
     if (center) {
-        This->rotateBy(degrees, *center);
+        This->rotateBy((float)degrees, *center);
     } else {
-        This->rotateBy(degrees);
+        This->rotateBy((float)degrees);
     }
     RET_VOID()
 }
@@ -588,7 +573,7 @@ static SQInteger script_vec2__tostring(HSQUIRRELVM v)
     std::ostringstream oss;
     oss << "<Vec2 instance at " << This;
     oss << " (x = " << This->x;
-    oss << ", y = " << This->y
+    oss << ", y = " << This->y;
     oss << ")>";
     RET_STRING(oss.str().c_str())
 }
@@ -598,7 +583,7 @@ static SQInteger script_vec2__tostring(HSQUIRRELVM v)
 static SQInteger script_vec2__dump(HSQUIRRELVM v)
 {
     CHECK_NARGS(2)
-    GET_ARG_VEC2(1, object)
+    GET_ARG_VEC2(1, instance)
     GET_ARG_STREAM(2, stream)
 
     if (!stream->isOpen() || !stream->isWriteable()) {
@@ -648,23 +633,11 @@ static SQInteger script_vec2__load(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsVec2(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_VEC2;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void BindVec2(const Vec2i& vec)
 {
     assert(g_Vec2Class._type == OT_CLASS);
     sq_pushobject(g_VM, g_Vec2Class); // push vec2 class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop vec2 class
     SQUserPointer p = 0;
     sq_getinstanceup(g_VM, -1, &p, 0);
@@ -739,7 +712,7 @@ static SQInteger script_stream_close(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // Stream.tell()
-static SQInteger script_stream_isReadable(HSQUIRRELVM v)
+static SQInteger script_stream_tell(HSQUIRRELVM v)
 {
     SETUP_STREAM_OBJECT()
     RET_INT(This->tell())
@@ -840,24 +813,24 @@ static SQInteger script_stream_readNumber(HSQUIRRELVM v)
     switch (endian) {
     case 'l':
         switch (type) {
-        case 'c': { i8 n;  if (  readi8(This,      n)) { RET_INT(n)   } } break;
-        case 'b': { u8 n;  if (  readi8(This,  (i8)n)) { RET_INT(n)   } } break;
-        case 's': { i16 n; if (readi16l(This,      n)) { RET_INT(n)   } } break;
-        case 'w': { u16 n; if (readi16l(This, (i16)n)) { RET_INT(n)   } } break;
-        case 'i': { i32 n; if (readi32l(This,      n)) { RET_INT(n)   } } break;
-        case 'f': { f32 n; if (readf32l(This,      n)) { RET_FLOAT(n) } } break;
+        case 'c': { i8 n;  if (  readi8(This, n)) { RET_INT(n)      } } break;
+        case 'b': { i8 n;  if (  readi8(This, n)) { RET_INT((u8)n)  } } break;
+        case 's': { i16 n; if (readi16l(This, n)) { RET_INT(n)      } } break;
+        case 'w': { i16 n; if (readi16l(This, n)) { RET_INT((u16)n) } } break;
+        case 'i': { i32 n; if (readi32l(This, n)) { RET_INT(n)      } } break;
+        case 'f': { f32 n; if (readf32l(This, n)) { RET_FLOAT(n)    } } break;
         default:
             THROW_ERROR("Invalid type")
         }
         break;
     case 'b':
         switch (type) {
-        case 'c': { i8 n;  if (  readi8(This,      n)) { RET_INT(n)   } } break;
-        case 'b': { u8 n;  if (  readi8(This,  (i8)n)) { RET_INT(n)   } } break;
-        case 's': { i16 n; if (readi16b(This,      n)) { RET_INT(n)   } } break;
-        case 'w': { u16 n; if (readi16b(This, (i16)n)) { RET_INT(n)   } } break;
-        case 'i': { i32 n; if (readi32b(This,      n)) { RET_INT(n)   } } break;
-        case 'f': { f32 n; if (readf32b(This,      n)) { RET_FLOAT(n) } } break;
+        case 'c': { i8 n;  if (  readi8(This, n)) { RET_INT(n)      } } break;
+        case 'b': { i8 n;  if (  readi8(This, n)) { RET_INT((u8)n)  } } break;
+        case 's': { i16 n; if (readi16b(This, n)) { RET_INT(n)      } } break;
+        case 'w': { i16 n; if (readi16b(This, n)) { RET_INT((u16)n) } } break;
+        case 'i': { i32 n; if (readi32b(This, n)) { RET_INT(n)      } } break;
+        case 'f': { f32 n; if (readf32b(This, n)) { RET_FLOAT(n)    } } break;
         default:
             THROW_ERROR("Invalid type")
         }
@@ -938,11 +911,11 @@ static SQInteger script_stream_writeNumber(HSQUIRRELVM v)
             }
         case 'h':
             switch (type) {
-            case 'c': {  i8 n =  (i8)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
-            case 'b': {  u8 n =  (u8)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
-            case 's': { i16 n = (i16)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
-            case 'w': { u16 n = (u16)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
-            case 'i': { i32 n = (i32)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+            case 'c': {  i8 n =  (i8)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
+            case 'b': {  u8 n =  (u8)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
+            case 's': { i16 n = (i16)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
+            case 'w': { u16 n = (u16)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
+            case 'i': { i32 n = (i32)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
             default:
                 THROW_ERROR("Invalid type")
             }
@@ -955,7 +928,7 @@ static SQInteger script_stream_writeNumber(HSQUIRRELVM v)
         switch (endian) {
         case 'l': { if (writef32l(This, (f32)number)) { RET_VOID() } } break;
         case 'b': { if (writef32b(This, (f32)number)) { RET_VOID() } } break;
-        case 'h': { f32 n = (f32)number; if (This->write(&n, sizeof(n)) == sizeof(n))) { RET_VOID() } } break;
+        case 'h': { f32 n = (f32)number; if (This->write(&n, sizeof(n)) == sizeof(n)) { RET_VOID() } } break;
         default:
             THROW_ERROR("Invalid endian")
         }
@@ -980,17 +953,6 @@ static SQInteger script_stream_writeString(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsStream(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_STREAM;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void CreateStreamDerivedClass()
 {
     sq_pushobject(g_VM, g_StreamClass);
@@ -1004,8 +966,7 @@ void BindStream(IStream* stream)
     assert(g_StreamClass._type == OT_CLASS);
     assert(stream);
     sq_pushobject(g_VM, g_StreamClass); // push stream class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop stream class
     sq_setreleasehook(g_VM, -1, script_stream_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)stream);
@@ -1063,7 +1024,7 @@ static SQInteger script_blob_FromString(HSQUIRRELVM v)
     BlobPtr blob = Blob::Create();
     int len = strlen(string);
     if (len > 0) {
-        blob->assign(str, len);
+        blob->assign(string, len);
     }
     RET_BLOB(blob.release())
 }
@@ -1362,32 +1323,21 @@ static SQInteger script_blob__load(HSQUIRRELVM v)
     }
 
     // read blob size
-    u32 blob_size;
-    if (!readi32l(stream, (i32)blob_size)) {
-        goto throw_read_error;
+    i32 blob_size;
+    if (!readi32l(stream, blob_size)) {
+        THROW_ERROR("Read error")
+    }
+    if (blob_size < 0) {
+        THROW_ERROR("Invalid size")
     }
 
     // read blob data
     BlobPtr instance = Blob::Create(blob_size);
     if (stream->read(instance->getBuffer(), blob_size) != blob_size) {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
 
-    RET_BLOB(blob.get())
-
-throw_read_error:
-    THROW_ERROR("Read error")
-}
-
-//-----------------------------------------------------------------
-bool IsBlob(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_BLOB;
-    }
-    return false;
+    RET_BLOB(instance.get())
 }
 
 //-----------------------------------------------------------------
@@ -1396,8 +1346,7 @@ void BindBlob(Blob* blob)
     assert(g_BlobClass._type == OT_CLASS);
     assert(blob);
     sq_pushobject(g_VM, g_BlobClass); // push blob class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop blob class
     sq_setreleasehook(g_VM, -1, script_blob_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)blob);
@@ -1523,7 +1472,7 @@ static SQInteger script_canvas_Load(HSQUIRRELVM v)
     if (!file) {
         THROW_ERROR("Could not open file")
     }
-    CanvasPtr image = LoadImage(file.get())
+    CanvasPtr image = LoadImage(file.get());
     if (!image) {
         THROW_ERROR("Could not load image")
     }
@@ -1539,7 +1488,7 @@ static SQInteger script_canvas_LoadFromStream(HSQUIRRELVM v)
     if (!stream->isOpen() || !stream->isReadable()) {
         THROW_ERROR("Invalid stream")
     }
-    CanvasPtr image = LoadImage(stream)
+    CanvasPtr image = LoadImage(stream);
     if (!image) {
         THROW_ERROR("Could not load image")
     }
@@ -1557,7 +1506,7 @@ static SQInteger script_canvas_save(HSQUIRRELVM v)
     if (!file) {
         THROW_ERROR("Could not open file")
     }
-    if (!SaveImage(image, file.get())) {
+    if (!SaveImage(This, file.get())) {
         THROW_ERROR("Could not save image")
     }
     RET_VOID()
@@ -1573,7 +1522,7 @@ static SQInteger script_canvas_saveToStream(HSQUIRRELVM v)
     if (!stream->isOpen() || !stream->isReadable()) {
         THROW_ERROR("Invalid stream")
     }
-    if (!SaveImage(image, stream)) {
+    if (!SaveImage(This, stream)) {
         THROW_ERROR("Could not save image")
     }
     RET_VOID()
@@ -1653,7 +1602,7 @@ static SQInteger script_canvas_resize(HSQUIRRELVM v)
     if (height <= 0) {
         THROW_ERROR("Invalid height")
     }
-    This->resize(width, height)
+    This->resize(width, height);
     RET_VOID()
 }
 
@@ -1760,7 +1709,7 @@ static SQInteger script_canvas__cloned(HSQUIRRELVM v)
     SETUP_CANVAS_OBJECT()
     CHECK_NARGS(1)
     GET_ARG_CANVAS(1, original)
-    This = Canvas::Create(original->getPixels(), original->getWidth(), original->getHeight());
+    This = Canvas::Create(original->getWidth(), original->getHeight(), original->getPixels());
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_canvas_destructor);
     RET_VOID()
@@ -1787,7 +1736,7 @@ static SQInteger script_canvas__dump(HSQUIRRELVM v)
 
     // write dimensions
     if (!writei32l(stream, (i32)instance->getWidth()) ||
-        !writei32l(stream, (i32)instance->getHeight())
+        !writei32l(stream, (i32)instance->getHeight()))
     {
         goto throw_write_error;
     }
@@ -1816,12 +1765,12 @@ static SQInteger script_canvas__load(HSQUIRRELVM v)
     }
 
     // read dimensions
-    u32 width;
-    u32 height;
-    if (!readi32l(stream, (i32)width) ||
-        !readi32l(stream, (i32)height))
+    i32 width;
+    i32 height;
+    if (!readi32l(stream, width) ||
+        !readi32l(stream, height))
     {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
     if (width * height <= 0) {
         THROW_ERROR("Invalid dimensions")
@@ -1832,24 +1781,10 @@ static SQInteger script_canvas__load(HSQUIRRELVM v)
     // read pixels
     int pixels_size = width * height * Canvas::GetNumBytesPerPixel();
     if (stream->read(instance->getPixels(), pixels_size) != pixels_size) {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
 
     RET_CANVAS(instance.get())
-
-throw_read_error:
-    THROW_ERROR("Read error")
-}
-
-//-----------------------------------------------------------------
-bool IsCanvas(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_CANVAS;
-    }
-    return false;
 }
 
 //-----------------------------------------------------------------
@@ -1858,8 +1793,7 @@ void BindCanvas(Canvas* canvas)
     assert(g_CanvasClass._type == OT_CLASS);
     assert(canvas);
     sq_pushobject(g_VM, g_CanvasClass); // push canvas class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop canvas class
     sq_setreleasehook(g_VM, -1, script_canvas_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)canvas);
@@ -1969,8 +1903,8 @@ static SQInteger script_Remove(HSQUIRRELVM v)
 static SQInteger script_Rename(HSQUIRRELVM v)
 {
     CHECK_NARGS(2)
-    GET_ARG_STRING(1, from)
-    GET_ARG_STRING(2, to)
+    GET_ARG_STRING(1, filenameFrom)
+    GET_ARG_STRING(2, filenameTo)
     if (!RenameFile(filenameFrom, filenameTo)) {
         THROW_ERROR("Could not rename file or directory")
     }
@@ -2048,17 +1982,6 @@ static SQInteger script_file__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsFile(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_FILE;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void CreateFileDerivedClass()
 {
     sq_pushobject(g_VM, g_FileClass);
@@ -2072,8 +1995,7 @@ void BindFile(IFile* file)
     assert(g_FileClass._type == OT_CLASS);
     assert(file);
     sq_pushobject(g_VM, g_FileClass); // push file class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop file class
     sq_setreleasehook(g_VM, -1, script_file_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)file);
@@ -2106,7 +2028,7 @@ static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
     GetSupportedVideoModes(video_modes);
     sq_newarray(v, video_modes.size());
     if (video_modes.size() > 0) {
-        for (int i = 0; i < video_modes.size(); ++i) {
+        for (int i = 0; i < (int)video_modes.size(); ++i) {
             sq_pushinteger(v, i); // key
 
             sq_newtable(v); // value
@@ -2191,7 +2113,7 @@ static SQInteger script_SetWindowFullscreen(HSQUIRRELVM v)
     }
     CHECK_NARGS(1)
     GET_ARG_BOOL(1, fullscreen)
-    SetWindowFullscreen((fullscreen == SQTrue ? true : false))
+    SetWindowFullscreen((fullscreen == SQTrue ? true : false));
     RET_VOID()
 }
 
@@ -2265,9 +2187,7 @@ static SQInteger script_SetClipRect(HSQUIRRELVM v)
     }
     CHECK_NARGS(1)
     GET_ARG_RECT(1, clip_rect)
-    if (!SetFrameBufferClipRect(*clip_rect)) {
-        THROW_ERROR("Could not set frame buffer clipping rectangle")
-    }
+    SetFrameBufferClipRect(*clip_rect);
     RET_VOID()
 }
 
@@ -2407,7 +2327,7 @@ static SQInteger script_DrawRect(HSQUIRRELVM v)
     GET_ARG_INT(2, y)
     GET_ARG_INT(3, width)
     GET_ARG_INT(4, height)
-    GET_ARG_INT(5, col)
+    GET_ARG_INT(5, col1)
     GET_OPTARG_INT(6, col2, col1)
     GET_OPTARG_INT(7, col3, col1)
     GET_OPTARG_INT(8, col4, col1)
@@ -2673,12 +2593,12 @@ static SQInteger script_texture__load(HSQUIRRELVM v)
     }
 
     // read dimensions
-    u32 width;
-    u32 height;
-    if (!readi32l(stream, (i32)width) ||
-        !readi32l(stream, (i32)height))
+    i32 width;
+    i32 height;
+    if (!readi32l(stream, width) ||
+        !readi32l(stream, height))
     {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
     if (width * height <= 0) {
         THROW_ERROR("Invalid dimensions")
@@ -2690,27 +2610,13 @@ static SQInteger script_texture__load(HSQUIRRELVM v)
     // read pixels
     int pixels_size = canvas->getNumPixels() * Canvas::GetNumBytesPerPixel();
     if (stream->read(canvas->getPixels(), pixels_size) != pixels_size) {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
 
     // create texture
     TexturePtr instance = CreateTexture(canvas.get());
 
     RET_TEXTURE(instance.get())
-
-throw_read_error:
-    THROW_ERROR("Read error")
-}
-
-//-----------------------------------------------------------------
-bool IsTexture(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_TEXTURE;
-    }
-    return false;
 }
 
 //-----------------------------------------------------------------
@@ -2719,8 +2625,7 @@ void BindTexture(ITexture* texture)
     assert(g_TextureClass._type == OT_CLASS);
     assert(texture);
     sq_pushobject(g_VM, g_TextureClass); // push texture class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop texture class
     sq_setreleasehook(g_VM, -1, script_texture_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)texture);
@@ -2903,24 +2808,12 @@ static SQInteger script_sound__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsSound(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_SOUND;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void BindSound(ISound* sound)
 {
     assert(g_SoundClass._type == OT_CLASS);
     assert(sound);
     sq_pushobject(g_VM, g_SoundClass); // push sound class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop sound class
     sq_setreleasehook(g_VM, -1, script_sound_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)sound);
@@ -3055,24 +2948,12 @@ static SQInteger script_soundeffect__tostring(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool IsSoundEffect(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_SOUNDEFFECT;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
 void BindSoundEffect(ISoundEffect* soundeffect)
 {
     assert(g_SoundEffectClass._type == OT_CLASS);
     assert(soundeffect);
     sq_pushobject(g_VM, g_SoundEffectClass); // push soundeffect class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop soundeffect class
     sq_setreleasehook(g_VM, -1, script_soundeffect_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)soundeffect);
@@ -3120,82 +3001,82 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
     if (GetEvent(event)) {
         sq_newtable(v); // event
 
-        sq_pushstring(v, _SC("type"), -1);
+        sq_pushstring(v, "type", -1);
         sq_pushinteger(v, event.type);
-        sq_newslot(v, -3);
+        sq_newslot(v, -3, SQFalse);
 
         switch (event.type) {
         case Event::KEY_DOWN:
         case Event::KEY_UP:
-            sq_pushstring(v, _SC("key"), -1);
+            sq_pushstring(v, "key", -1);
             sq_pushinteger(v, event.key.key);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::MOUSE_BUTTON_DOWN:
         case Event::MOUSE_BUTTON_UP:
-            sq_pushstring(v, _SC("mbutton"), -1);
+            sq_pushstring(v, "mbutton", -1);
             sq_pushinteger(v, event.mbutton.button);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::MOUSE_MOTION:
-            sq_pushstring(v, _SC("dx"), -1);
+            sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mmotion.dx);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("dy"), -1);
+            sq_pushstring(v, "dy", -1);
             sq_pushinteger(v, event.mmotion.dy);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::MOUSE_WHEEL_MOTION:
-            sq_pushstring(v, _SC("dx"), -1);
+            sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mwheel.dx);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("dy"), -1);
+            sq_pushstring(v, "dy", -1);
             sq_pushinteger(v, event.mwheel.dy);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::JOY_BUTTON_DOWN:
         case Event::JOY_BUTTON_UP:
-            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jbutton.joy);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("button"), -1);
+            sq_pushstring(v, "button", -1);
             sq_pushinteger(v, event.jbutton.button);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::JOY_AXIS_MOTION:
-            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jaxis.joy);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("axis"), -1);
+            sq_pushstring(v, "axis", -1);
             sq_pushinteger(v, event.jaxis.axis);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("value"), -1);
+            sq_pushstring(v, "value", -1);
             sq_pushinteger(v, event.jaxis.value);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::JOY_HAT_MOTION:
-            sq_pushstring(v, _SC("joy"), -1);
+            sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jhat.joy);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("hat"), -1);
+            sq_pushstring(v, "hat", -1);
             sq_pushinteger(v, event.jhat.hat);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, _SC("state"), -1);
+            sq_pushstring(v, "state", -1);
             sq_pushinteger(v, event.jhat.state);
-            sq_newslot(v, -3);
+            sq_newslot(v, -3, SQFalse);
             break;
 
         case Event::APP_QUIT:
@@ -3411,9 +3292,7 @@ static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
     CHECK_NARGS(2)
     GET_ARG_INT(1, joy)
     GET_ARG_INT(2, effect)
-    if (!RemoveJoystickForceEffect(joy, effect)) {
-        THROW_ERROR("Could not remove joystick force effect")
-    }
+    RemoveJoystickForceEffect(joy, effect);
     RET_VOID()
 }
 
@@ -3565,24 +3444,10 @@ static SQInteger script_forceeffect__load(HSQUIRRELVM v)
         !readi32l(stream, instance.start)     ||
         !readi32l(stream, instance.end))
     {
-        goto throw_read_error;
+        THROW_ERROR("Read error")
     }
 
     RET_FORCEEFFECT(instance)
-
-throw_read_error:
-    THROW_ERROR("Read error")
-}
-
-//-----------------------------------------------------------------
-bool IsForceEffect(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_FORCEEFFECT;
-    }
-    return false;
 }
 
 //-----------------------------------------------------------------
@@ -3590,8 +3455,7 @@ void BindForceEffect(const ForceEffect& effect)
 {
     assert(g_ForceEffectClass._type == OT_CLASS);
     sq_pushobject(g_VM, g_ForceEffectClass); // push forceeffect class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
+    sq_createinstance(g_VM, -1);
     sq_remove(g_VM, -2); // pop forceeffect class
     SQUserPointer p = 0;
     sq_getinstanceup(g_VM, -1, &p, 0);
@@ -3643,401 +3507,9 @@ static SQInteger script_GetRandom(HSQUIRRELVM v)
 static SQInteger script_Sleep(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
-    GET_ARG_INT(ms)
+    GET_ARG_INT(1, ms)
     Sleep(ms);
     RET_VOID()
-}
-
-/******************************************************************
- *                                                                *
- *                          ENCRYPTION                            *
- *                                                                *
- ******************************************************************/
-
-/*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// Base64Encode(data [, out])
-static SQInteger script_Base64Encode(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, data)
-    GET_OPTARG_BLOB(2, out)
-    if (data->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    if (out) {
-        if (!Base64Encode(data->getBuffer(), data->getSize(), out)) {
-            THROW_ERROR("Base64 encoding failed")
-        }
-        RET_ARG(2)
-    } else {
-        BlobPtr blob = Blob::Create();
-        if (!Base64Encode(data->getBuffer(), data->getSize(), blob.get())) {
-            THROW_ERROR("Base64 encoding failed")
-        }
-        RET_BLOB(blob.get())
-    }
-}
-
-//-----------------------------------------------------------------
-// Base64Decode(data [, out])
-static SQInteger script_Base64Decode(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, data)
-    GET_OPTARG_BLOB(2, out)
-    if (data->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    if (out) {
-        if (!Base64Decode(data->getBuffer(), data->getSize(), out)) {
-            THROW_ERROR("base64 encoding failed")
-        }
-        RET_ARG(2)
-    } else {
-        BlobPtr blob = Blob::Create();
-        if (!Base64Decode(data->getBuffer(), data->getSize(), blob.get())) {
-            THROW_ERROR("base64 decoding failed")
-        }
-        RET_BLOB(blob.get())
-    }
-}
-
-//-----------------------------------------------------------------
-// ComputeCRC32(data [, in_crc32 = 0])
-static SQInteger script_ComputeCRC32(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, data)
-    GET_OPTARG_INT(2, in_crc32, 0)
-    if (data->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    RET_INT(ComputeCRC32(data->getBuffer(), data->getSize(), in_crc32))
-}
-
-/**************************** CIPHER ******************************/
-
-#define SETUP_CIPHER_OBJECT() \
-    ICipher* This = 0; \
-    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_CIPHER))) { \
-        THROW_ERROR("Invalid type of environment object, expected a Cipher instance") \
-    }
-
-//-----------------------------------------------------------------
-static SQInteger script_cipher_destructor(SQUserPointer p, SQInteger size)
-{
-    assert(p);
-    ((ICipher*)p)->drop();
-    return 0;
-}
-
-//-----------------------------------------------------------------
-// Cipher.AES()
-static SQInteger script_cipher_AES(HSQUIRRELVM v)
-{
-    CipherPtr cipher = CreateAESCipher();
-    RET_CIPHER(cipher.get())
-}
-
-//-----------------------------------------------------------------
-// Cipher.Blowfish()
-static SQInteger script_cipher_Blowfish(HSQUIRRELVM v)
-{
-    CipherPtr cipher = CreateBlowfishCipher();
-    RET_CIPHER(cipher.get())
-}
-
-//-----------------------------------------------------------------
-// Cipher.Twofish()
-static SQInteger script_cipher_Twofish(HSQUIRRELVM v)
-{
-    CipherPtr cipher = CreateTwofishCipher();
-    RET_CIPHER(cipher.get())
-}
-
-//-----------------------------------------------------------------
-// Cipher.init(key, iv)
-static SQInteger script_cipher_init(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    CHECK_NARGS(2)
-    GET_ARG_BLOB(1, key)
-    GET_ARG_BLOB(2, iv)
-    if (key->getSize() == 0) {
-        THROW_ERROR("Empty key")
-    }
-    if (iv->getSize() == 0) {
-        THROW_ERROR("Empty IV")
-    }
-    if (!This->init(key->getBuffer(), key->getSize(), iv->getBuffer(), iv->getSize())) {
-        THROW_ERROR("Initialization failed")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// Cipher.isInitialized()
-static SQInteger script_cipher_isInitialized(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    RET_BOOL(This->isInitialized())
-}
-
-//-----------------------------------------------------------------
-// Cipher.encrypt(pt [, out])
-static SQInteger script_cipher_encrypt(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, pt)
-    GET_OPTARG_BLOB(2, out)
-    if (pt->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    if (out) {
-        out->resize(pt->getSize());
-        if (!This->encrypt(pt->getBuffer(), out->getBuffer(), pt->getSize())) {
-            THROW_ERROR("Encryption failed")
-        }
-        RET_ARG(2)
-    } else {
-        BlobPtr blob = Blob::Create(pt->getSize());
-        if (!This->encrypt(pt->getBuffer(), blob->getBuffer(), pt->getSize())) {
-            THROW_ERROR("Encryption failed")
-        }
-        RET_BLOB(blob.get())
-    }
-}
-
-//-----------------------------------------------------------------
-// Cipher.decrypt(ct [, out])
-static SQInteger script_cipher_decrypt(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, ct)
-    GET_OPTARG_BLOB(2, out)
-    if (ct->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    if (out) {
-        out->resize(ct->getSize());
-        if (!This->decrypt(ct->getBuffer(), out->getBuffer(), ct->getSize())) {
-            THROW_ERROR("Decryption failed")
-        }
-        RET_ARG(2)
-    } else {
-        BlobPtr blob = Blob::Create(ct->getSize());
-        if (!This->decrypt(ct->getBuffer(), blob->getBuffer(), ct->getSize())) {
-            THROW_ERROR("Decryption failed")
-        }
-        RET_BLOB(blob.get())
-    }
-}
-
-//-----------------------------------------------------------------
-// Cipher._typeof()
-static SQInteger script_cipher__typeof(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    RET_STRING("Cipher")
-}
-
-//-----------------------------------------------------------------
-// Cipher._tostring()
-static SQInteger script_cipher__tostring(HSQUIRRELVM v)
-{
-    SETUP_CIPHER_OBJECT()
-    std::ostringstream oss;
-    oss << "<Cipher instance at " << This;
-    oss << ")>";
-    RET_STRING(oss.str().c_str())
-}
-
-//-----------------------------------------------------------------
-bool IsCipher(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_CIPHER;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
-void BindCipher(ICipher* cipher)
-{
-    assert(g_CipherClass._type == OT_CLASS);
-    assert(cipher);
-    sq_pushobject(g_VM, g_CipherClass); // push cipher class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
-    sq_remove(g_VM, -2); // pop cipher class
-    sq_setreleasehook(g_VM, -1, script_cipher_destructor);
-    sq_setinstanceup(g_VM, -1, (SQUserPointer)cipher);
-    cipher->grab(); // grab a new reference
-}
-
-//-----------------------------------------------------------------
-ICipher* GetCipher(SQInteger idx)
-{
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_CIPHER))) {
-        return (ICipher*)p;
-    }
-    return 0;
-}
-
-/***************************** HASH *******************************/
-
-#define SETUP_HASH_OBJECT() \
-    IHash* This = 0; \
-    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_HASH))) { \
-        THROW_ERROR("Invalid type of environment object, expected a Hash instance") \
-    }
-
-//-----------------------------------------------------------------
-static SQInteger script_hasher_destructor(SQUserPointer p, SQInteger size)
-{
-    assert(p);
-    ((IHash*)p)->drop();
-    return 0;
-}
-
-//-----------------------------------------------------------------
-// Hash.MD5()
-static SQInteger script_hash_constructor(HSQUIRRELVM v)
-{
-    HashPtr hash = CreateMD5Hash();
-    RET_HASH(hash.get())
-}
-
-//-----------------------------------------------------------------
-// Hash.SHA256()
-static SQInteger script_hash_SHA256(HSQUIRRELVM v)
-{
-    HashPtr hash = CreateSHA256Hash();
-    RET_HASH(hash.get())
-}
-
-//-----------------------------------------------------------------
-// Hash.SHA512()
-static SQInteger script_hash_SHA512(HSQUIRRELVM v)
-{
-    HashPtr hash = CreateSHA512Hash();
-    RET_HASH(hash.get())
-}
-
-//-----------------------------------------------------------------
-// Hash.Whirlpool()
-static SQInteger script_hash_Whirlpool(HSQUIRRELVM v)
-{
-    HashPtr hash = CreateWhirlpoolHash();
-    RET_HASH(hash.get())
-}
-
-//-----------------------------------------------------------------
-// Hash.init()
-static SQInteger script_hash_init(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    if (!This->init()) {
-        THROW_ERROR("Could not initialize hash")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// Hash.isInitialized()
-static SQInteger script_hash_isInitialized(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    RET_BOOL(This->isInitialized())
-}
-
-//-----------------------------------------------------------------
-// Hash.process(data)
-static SQInteger script_hash_encrypt(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    CHECK_NARGS(1)
-    GET_ARG_BLOB(1, data)
-    if (data->getSize() == 0) {
-        THROW_ERROR("Empty input data")
-    }
-    if (!This->process(in->getBuffer(), in->getSize())) {
-        THROW_ERROR("Could not process data")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// Hash.finish()
-static SQInteger script_hash_encrypt(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    BlobPtr result = Blob::Create();
-    if (!This->finish(result.get())) {
-        THROW_ERROR("Could not finish hash")
-    }
-    RET_BLOB(result.get())
-}
-
-//-----------------------------------------------------------------
-// Hash._typeof()
-static SQInteger script_hash__typeof(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    RET_STRING("Hash")
-}
-
-//-----------------------------------------------------------------
-// Hash._tostring()
-static SQInteger script_hash__tostring(HSQUIRRELVM v)
-{
-    SETUP_HASH_OBJECT()
-    std::ostringstream oss;
-    oss << "<Hash instance at " << This;
-    oss << ")>";
-    RET_STRING(oss.str().c_str())
-}
-
-//-----------------------------------------------------------------
-bool IsHash(HSQUIRRELVM v, SQInteger idx)
-{
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_HASH;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
-void BindHash(IHash* hash)
-{
-    assert(g_HashClass._type == OT_CLASS);
-    assert(hash);
-    sq_pushobject(v, g_HashClass); // push hash class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
-    sq_remove(v, -2); // pop hash class
-    sq_setreleasehook(v, -1, script_hash_destructor);
-    sq_setinstanceup(v, -1, (SQUserPointer)hash);
-    hash->grab(); // grab a new reference
-}
-
-//-----------------------------------------------------------------
-IHash* GetHash(SQInteger idx)
-{
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(v, idx, &p, TT_HASH))) {
-        return (IHash*)p;
-    }
-    return 0;
 }
 
 /******************************************************************
@@ -4046,203 +3518,163 @@ IHash* GetHash(SQInteger idx)
  *                                                                *
  ******************************************************************/
 
-/************************ COMPRESSIONSTREAM ***********************/
+/**************************** ZSTREAM *****************************/
 
-#define SETUP_COMPRESSIONSTREAM_OBJECT() \
-    ICompressionStream* This = 0; \
-    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_COMPRESSIONSTREAM))) { \
-        THROW_ERROR("Invalid type of environment object, expected a CompressionStream instance") \
+#define SETUP_ZSTREAM_OBJECT() \
+    ZStream* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_ZSTREAM))) { \
+        THROW_ERROR("Invalid type of environment object, expected a ZStream instance") \
     }
 
 //-----------------------------------------------------------------
-static SQInteger script_compressionstream_destructor(SQUserPointer p, SQInteger size)
+static SQInteger script_zstream_destructor(SQUserPointer p, SQInteger size)
 {
     assert(p);
-    ((ICompressionStream*)p)->drop();
+    ((ZStream*)p)->drop();
     return 0;
 }
 
 //-----------------------------------------------------------------
-// CompressionStream.Deflate()
-static SQInteger script_compressionstream_Deflate(HSQUIRRELVM v)
+// ZStream()
+static SQInteger script_zstream_constructor(HSQUIRRELVM v)
 {
-    CompressionStreamPtr stream = CreateDeflateCompressionStream();
-    RET_COMPRESSIONSTREAM(stream.get())
-}
-
-//-----------------------------------------------------------------
-// CompressionStream.LZMA2()
-static SQInteger script_compressionstream_LZMA2(HSQUIRRELVM v)
-{
-    CompressionStreamPtr stream = CreateLZMA2CompressionStream();
-    RET_COMPRESSIONSTREAM(stream.get())
-}
-
-//-----------------------------------------------------------------
-// CompressionStream.BZIP2()
-static SQInteger script_compressionstream_BZIP2(HSQUIRRELVM v)
-{
-    CompressionStreamPtr stream = CreateBZIP2CompressionStream();
-    RET_COMPRESSIONSTREAM(stream.get())
-}
-
-//-----------------------------------------------------------------
-// CompressionStream.init(mode)
-static SQInteger script_compressionstream_init(HSQUIRRELVM v)
-{
-    SETUP_COMPRESSIONSTREAM_OBJECT()
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, mode)
-    if (!This->init(mode)) {
-        THROW_ERROR("Could not initialize compression stream")
-    }
+    SETUP_ZSTREAM_OBJECT()
+    This = ZStream::Create();
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_zstream_destructor);
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// CompressionStream.isInitialized()
-static SQInteger script_compressionstream_isInitialized(HSQUIRRELVM v)
+// ZStream.getBufferSize()
+static SQInteger script_zstream_getBufferSize(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
-    RET_BOOL(This->isInitialized())
-}
-
-//-----------------------------------------------------------------
-// CompressionStream.getMode()
-static SQInteger script_compressionstream_getMode(HSQUIRRELVM v)
-{
-    SETUP_COMPRESSIONSTREAM_OBJECT()
-    if (!This->isInitialized()) {
-        THROW_ERROR("Invalid stream state")
-    }
-    RET_INT(This->getMode())
-}
-
-//-----------------------------------------------------------------
-// CompressionStream.getBufferSize()
-static SQInteger script_compressionstream_getBufferSize(HSQUIRRELVM v)
-{
-    SETUP_COMPRESSIONSTREAM_OBJECT()
+    SETUP_ZSTREAM_OBJECT()
     RET_INT(This->getBufferSize())
 }
 
 //-----------------------------------------------------------------
-// CompressionStream.setBufferSize(size)
-static SQInteger script_compressionstream_setBufferSize(HSQUIRRELVM v)
+// ZStream.setBufferSize(size)
+static SQInteger script_zstream_setBufferSize(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
+    SETUP_ZSTREAM_OBJECT()
     CHECK_NARGS(1)
     GET_ARG_INT(1, size)
     if (size <= 0) {
         THROW_ERROR("Invalid size")
     }
-    if (!This->setBufferSize(size)) {
-        THROW_ERROR("Could not set buffer size")
-    }
+    This->setBufferSize(size);
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// CompressionStream.consume(data [, out])
-static SQInteger script_compressionstream_consume(HSQUIRRELVM v)
+// ZStream.compress(data [, out])
+static SQInteger script_zstream_compress(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
+    SETUP_ZSTREAM_OBJECT()
     CHECK_MIN_NARGS(1)
     GET_ARG_BLOB(1, data)
     GET_OPTARG_BLOB(2, out)
-    if (!This->isInitialized()) {
-        THROW_ERROR("Invalid stream state")
-    }
     if (data->getSize() == 0) {
         THROW_ERROR("Empty input data")
     }
     if (out) {
-        if (!This->consume(data->getBuffer(), data->getSize(), out)) {
-            THROW_ERROR("Could not consume data")
+        if (!This->compress(data->getBuffer(), data->getSize(), out)) {
+            THROW_ERROR("Error compressing")
         }
         RET_ARG(2)
     } else {
         BlobPtr blob = Blob::Create();
-        if (!This->consume(data->getBuffer(), data->getSize(), blob.get())) {
-            THROW_ERROR("Could not consume data")
+        if (!This->compress(data->getBuffer(), data->getSize(), blob.get())) {
+            THROW_ERROR("Error compressing")
         }
         RET_BLOB(blob.get())
     }
 }
 
 //-----------------------------------------------------------------
-// CompressionStream.close([out])
-static SQInteger script_compressionstream_close(HSQUIRRELVM v)
+// ZStream.decompress(data [, out])
+static SQInteger script_zstream_decompress(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
-    GET_OPTARG_BLOB(1, out)
-    if (!This->isInitialized()) {
-        THROW_ERROR("Invalid stream state")
+    SETUP_ZSTREAM_OBJECT()
+    CHECK_MIN_NARGS(1)
+    GET_ARG_BLOB(1, data)
+    GET_OPTARG_BLOB(2, out)
+    if (data->getSize() == 0) {
+        THROW_ERROR("Empty input data")
     }
     if (out) {
-        if (!This->close(out)) {
-            THROW_ERROR("Could not close compression stream")
+        if (!This->decompress(data->getBuffer(), data->getSize(), out)) {
+            THROW_ERROR("Error decompressing")
         }
         RET_ARG(2)
     } else {
         BlobPtr blob = Blob::Create();
-        if (!This->close(blob.get())) {
-            THROW_ERROR("Could not close compression stream")
+        if (!This->decompress(data->getBuffer(), data->getSize(), blob.get())) {
+            THROW_ERROR("Error decompressing")
         }
         RET_BLOB(blob.get())
     }
 }
 
 //-----------------------------------------------------------------
-// CompressionStream._typeof()
-static SQInteger script_compressionstream__typeof(HSQUIRRELVM v)
+// ZStream.finish([out])
+static SQInteger script_zstream_finish(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
-    RET_STRING("CompressionStream")
+    SETUP_ZSTREAM_OBJECT()
+    GET_OPTARG_BLOB(1, out)
+    if (out) {
+        if (!This->finish(out)) {
+            THROW_ERROR("Error finishing")
+        }
+        RET_ARG(2)
+    } else {
+        BlobPtr blob = Blob::Create();
+        if (!This->finish(blob.get())) {
+            THROW_ERROR("Error finishing")
+        }
+        RET_BLOB(blob.get())
+    }
 }
 
 //-----------------------------------------------------------------
-// CompressionStream._tostring()
-static SQInteger script_compressionstream__tostring(HSQUIRRELVM v)
+// ZStream._typeof()
+static SQInteger script_zstream__typeof(HSQUIRRELVM v)
 {
-    SETUP_COMPRESSIONSTREAM_OBJECT()
+    SETUP_ZSTREAM_OBJECT()
+    RET_STRING("ZStream")
+}
+
+//-----------------------------------------------------------------
+// ZStream._tostring()
+static SQInteger script_zstream__tostring(HSQUIRRELVM v)
+{
+    SETUP_ZSTREAM_OBJECT()
     std::ostringstream oss;
-    oss << "<CompressionStream instance at " << This;
+    oss << "<ZStream instance at " << This;
     oss << ")>";
     RET_STRING(oss.str().c_str())
 }
 
 //-----------------------------------------------------------------
-bool IsCompressionStream(HSQUIRRELVM v, SQInteger idx)
+void BindZStream(ZStream* stream)
 {
-    if (sq_gettype(v, idx) == OT_INSTANCE) {
-        SQUserPointer tt;
-        sq_gettypetag(v, idx, &tt);
-        return tt == TT_COMPRESSIONSTREAM;
-    }
-    return false;
-}
-
-//-----------------------------------------------------------------
-void BindCompressionStream(ICompressionStream* stream)
-{
-    assert(g_CompressionStreamClass._type == OT_CLASS);
+    assert(g_ZStreamClass._type == OT_CLASS);
     assert(stream);
-    sq_pushobject(g_VM, g_CompressionStreamClass); // push compressionstream class
-    bool succeeded = SQ_SUCCEEDED(sq_createinstance(g_VM, -1));
-    assert(succeeded);
-    sq_remove(g_VM, -2); // pop compressionstream class
-    sq_setreleasehook(g_VM, -1, script_compressionstream_destructor);
+    sq_pushobject(g_VM, g_ZStreamClass); // push zstream class
+    sq_createinstance(g_VM, -1);
+    sq_remove(g_VM, -2); // pop zstream class
+    sq_setreleasehook(g_VM, -1, script_zstream_destructor);
     sq_setinstanceup(g_VM, -1, (SQUserPointer)stream);
     stream->grab(); // grab a new reference
 }
 
 //-----------------------------------------------------------------
-ICompressionStream* GetCompressionStream(SQInteger idx)
+ZStream* GetZStream(SQInteger idx)
 {
     SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_COMPRESSIONSTREAM))) {
-        return (ICompressionStream*)p;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_ZSTREAM))) {
+        return (ZStream*)p;
     }
     return 0;
 }
@@ -4266,12 +3698,12 @@ static bool compile_buffer(HSQUIRRELVM v, const std::string& name, const void* b
 
 //-----------------------------------------------------------------
 // CompileString(source [, scriptName = "unknown"])
-static SQInteger script_CompileStream(HSQUIRRELVM v)
+static SQInteger script_CompileString(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(1)
     GET_ARG_STRING(1, source)
     GET_OPTARG_STRING(2, scriptName, "unknown")
-    len = strlen(source);
+    int len = strlen(source);
     if (len == 0) {
         THROW_ERROR("Empty source")
     }
@@ -4283,7 +3715,7 @@ static SQInteger script_CompileStream(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // CompileBlob(source [, scriptName = "unknown", offset = 0, count = -1])
-static SQInteger script_CompileStream(HSQUIRRELVM v)
+static SQInteger script_CompileBlob(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(1)
     GET_ARG_BLOB(1, source)
@@ -4378,7 +3810,7 @@ bool EvaluateScript(const std::string& filename)
     // load script
     if (DoesFileExist(filename)) {
         FilePtr file = OpenFile(filename);
-        if (LoadObject(g_VM, file.get())) { // try loading as bytecode
+        if (LoadObject(file.get())) { // try loading as bytecode
             if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
                 sq_settop(g_VM, old_top); // restore stack top
                 return false;
@@ -4443,7 +3875,7 @@ static SQInteger script_RequireScript(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // GetLoadedScripts()
-static SQInteger script_RequireScript(HSQUIRRELVM v)
+static SQInteger script_GetLoadedScripts(HSQUIRRELVM v)
 {
     sq_newarray(v, g_ScriptRegistry.size());
     for (int i = 0; i < (int)g_ScriptRegistry.size(); i++) {
@@ -4461,115 +3893,115 @@ static SQInteger script_RequireScript(HSQUIRRELVM v)
  ******************************************************************/
 
 //-----------------------------------------------------------------
-static bool ObjectToJSON(HSQUIRRELVM v, SQInteger idx)
+bool ObjectToJSON(SQInteger idx)
 {
     if (idx < 0) { // make any negative indices positive to reduce complexity
-        idx = (sq_gettop(v) + 1) + idx;
+        idx = (sq_gettop(g_VM) + 1) + idx;
     }
-    switch (sq_gettype(v, idx)) {
+    switch (sq_gettype(g_VM, idx)) {
     case OT_NULL: {
-        sq_pushstring(v, _SC("null"), -1);
+        sq_pushstring(g_VM, "null", -1);
         return true;
     }
     case OT_BOOL: {
         SQBool b;
-        sq_getbool(v, idx, &b);
-        sq_pushstring(v, ((b == SQTrue) ? _SC("true") : _SC("false")), -1);
+        sq_getbool(g_VM, idx, &b);
+        sq_pushstring(g_VM, ((b == SQTrue) ? "true" : "false"), -1);
         return true;
     }
     case OT_INTEGER: {
         SQInteger i;
-        sq_getinteger(v, idx, &i);
+        sq_getinteger(g_VM, idx, &i);
         std::ostringstream oss;
         oss << i;
-        sq_pushstring(v, oss.str().c_str(), -1);
+        sq_pushstring(g_VM, oss.str().c_str(), -1);
         return true;
     }
     case OT_FLOAT: {
         SQFloat f;
-        sq_getfloat(v, idx, &f);
+        sq_getfloat(g_VM, idx, &f);
         std::ostringstream oss;
         oss << f;
-        sq_pushstring(v, oss.str().c_str(), -1);
+        sq_pushstring(g_VM, oss.str().c_str(), -1);
         return true;
     }
     case OT_STRING: {
         const SQChar* s = 0;
-        sq_getstring(v, idx, &s);
+        sq_getstring(g_VM, idx, &s);
         std::ostringstream oss;
         oss << "\"" << s << "\"";
-        sq_pushstring(v, oss.str().c_str(), -1);
+        sq_pushstring(g_VM, oss.str().c_str(), -1);
         return true;
     }
     case OT_TABLE: {
         const SQChar* temp = 0;
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
         std::ostringstream oss;
         oss << "{";
-        sq_pushnull(v); // will be substituted with an iterator by squirrel
+        sq_pushnull(g_VM); // will be substituted with an iterator by squirrel
         bool appendcomma = false;
-        while (SQ_SUCCEEDED(sq_next(v, idx))) {
+        while (SQ_SUCCEEDED(sq_next(g_VM, idx))) {
             if (appendcomma) {
                 oss << ",";
             } else {
                 appendcomma = true;
             }
-            int top = sq_gettop(v);
-            if (sq_gettype(v, top-1) != OT_STRING) { // key must be a string
-                sq_settop(v, oldtop);
+            int top = sq_gettop(g_VM);
+            if (sq_gettype(g_VM, top-1) != OT_STRING) { // key must be a string
+                sq_settop(g_VM, oldtop);
                 return false;
             }
-            sq_getstring(v, top-1, &temp);
+            sq_getstring(g_VM, top-1, &temp);
             oss << "\"" << temp << "\":";
-            if (sq_gettype(v, top) == OT_STRING) {
-                sq_getstring(v, top, &temp);
+            if (sq_gettype(g_VM, top) == OT_STRING) {
+                sq_getstring(g_VM, top, &temp);
                 oss << "\"" << temp << "\"";
             } else {
-                if (!ObjectToJSON(v, top)) { // tojson value
-                    sq_settop(v, oldtop);
+                if (!ObjectToJSON(top)) { // tojson value
+                    sq_settop(g_VM, oldtop);
                     return false;
                 }
-                sq_getstring(v, top+1, &temp);
+                sq_getstring(g_VM, top+1, &temp);
                 oss << temp;
-                sq_poptop(v); // pop json value
+                sq_poptop(g_VM); // pop json value
             }
-            sq_pop(v, 2); // pop key, value
+            sq_pop(g_VM, 2); // pop key, value
         }
-        sq_poptop(v); // pop iterator
+        sq_poptop(g_VM); // pop iterator
         oss << "}";
-        sq_pushstring(v, oss.str().c_str(), -1);
+        sq_pushstring(g_VM, oss.str().c_str(), -1);
         return true;
     }
     case OT_ARRAY: {
         const SQChar* temp = 0;
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
         std::ostringstream oss;
         oss << "[";
-        sq_pushnull(v); // will be substituted with an iterator by squirrel
+        sq_pushnull(g_VM); // will be substituted with an iterator by squirrel
         bool appendcomma = false;
-        while (SQ_SUCCEEDED(sq_next(v, idx))) {
+        while (SQ_SUCCEEDED(sq_next(g_VM, idx))) {
             if (appendcomma) {
                 oss << ",";
             } else {
                 appendcomma = true;
             }
-            if (sq_gettype(v, idx+3) == OT_STRING) {
-                sq_getstring(v, idx+3, &temp);
+            if (sq_gettype(g_VM, idx+3) == OT_STRING) {
+                sq_getstring(g_VM, idx+3, &temp);
                 oss << "\"" << temp << "\"";
             } else {
-                if (!ObjectToJSON(v, idx+3)) { // tojson value
-                    sq_settop(v, oldtop);
+                if (!ObjectToJSON(idx+3)) { // tojson value
+                    sq_settop(g_VM, oldtop);
                     return false;
                 }
-                sq_getstring(v, idx+4, &temp);
+                sq_getstring(g_VM, idx+4, &temp);
                 oss << temp;
-                sq_poptop(v); // pop json value
+                sq_poptop(g_VM); // pop json value
             }
-            sq_pop(v, 2); // pop key, value
+            sq_pop(g_VM, 2); // pop key, value
         }
-        sq_poptop(v); // pop iterator
+        sq_poptop(g_VM); // pop iterator
         oss << "]";
-        sq_pushstring(v, oss.str().c_str(), -1);
+        sq_pushstring(g_VM, oss.str().c_str(), -1);
         return true;
     }
     default:
@@ -4581,7 +4013,7 @@ static bool ObjectToJSON(HSQUIRRELVM v, SQInteger idx)
 // ObjectToJSON(object)
 static SQInteger script_ObjectToJSON(HSQUIRRELVM v)
 {
-    if (!ObjectToJSON(v, 2)) {
+    if (!ObjectToJSON(2)) {
         THROW_ERROR("conversion to JSON failed")
     }
     return 1;
@@ -4595,22 +4027,22 @@ static SQInteger write_closure_callback(SQUserPointer p, SQUserPointer buf, SQIn
 }
 
 //-----------------------------------------------------------------
-static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
+bool DumpObject(SQInteger idx, IStream* stream)
 {
     assert(stream);
     if (!stream || !stream->isWriteable()) {
         return false;
     }
     if (idx < 0) { // make any negative indices positive to reduce complexity
-        idx = (sq_gettop(v) + 1) + idx;
+        idx = (sq_gettop(g_VM) + 1) + idx;
     }
-    switch (sq_gettype(v, idx)) {
+    switch (sq_gettype(g_VM, idx)) {
     case OT_NULL: {
         return writei32l(stream, MARSHAL_MAGIC_NULL);
     }
     case OT_INTEGER: {
         SQInteger i;
-        sq_getinteger(v, idx, &i);
+        sq_getinteger(g_VM, idx, &i);
         if (!writei32l(stream, MARSHAL_MAGIC_INTEGER) ||
             !writei32l(stream, (i32)i))
         {
@@ -4620,12 +4052,12 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     case OT_BOOL: {
         SQBool b;
-        sq_getbool(v, idx, &b);
+        sq_getbool(g_VM, idx, &b);
         return writei32l(stream, ((b == SQTrue) ? MARSHAL_MAGIC_BOOL_TRUE : MARSHAL_MAGIC_BOOL_FALSE));
     }
     case OT_FLOAT: {
         SQFloat f;
-        sq_getfloat(v, idx, &f);
+        sq_getfloat(g_VM, idx, &f);
         if (!writei32l(stream, MARSHAL_MAGIC_FLOAT) ||
 #ifdef SQUSEDOUBLE
             !writef64l(stream, (f64)f))
@@ -4639,8 +4071,8 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
     }
     case OT_STRING: {
         const SQChar* s = 0;
-        sq_getstring(v, idx, &s);
-        u32 numbytes = (u32)sq_getsize(v, idx);
+        sq_getstring(g_VM, idx, &s);
+        u32 numbytes = (u32)sq_getsize(g_VM, idx);
         if (!writei32l(stream, MARSHAL_MAGIC_STRING) ||
             !writei32l(stream, (i32)numbytes))
         {
@@ -4652,84 +4084,84 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
         return true;
     }
     case OT_TABLE: {
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
         if (!writei32l(stream, MARSHAL_MAGIC_TABLE) ||
-            !writei32l(stream, (i32)sq_getsize(v, idx)))
+            !writei32l(stream, (i32)sq_getsize(g_VM, idx)))
         {
             return false;
         }
-        sq_pushnull(v); // will be substituted with an iterator by squirrel
-        while (SQ_SUCCEEDED(sq_next(v, idx))) {
-            if (!DumpObject(v, stream, sq_gettop(v)-1) || // marshal key
-                !DumpObject(v, stream, sq_gettop(v)))     // marshal value
+        sq_pushnull(g_VM); // will be substituted with an iterator by squirrel
+        while (SQ_SUCCEEDED(sq_next(g_VM, idx))) {
+            if (!DumpObject(sq_gettop(g_VM)-1, stream) || // marshal key
+                !DumpObject(sq_gettop(g_VM), stream))     // marshal value
             {
-                sq_settop(v, oldtop);
+                sq_settop(g_VM, oldtop);
                 return false;
             }
-            sq_pop(v, 2); // pop key and value
+            sq_pop(g_VM, 2); // pop key and value
         }
-        sq_poptop(v); // pop iterator
+        sq_poptop(g_VM); // pop iterator
         return true;
     }
     case OT_ARRAY: {
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
         if (!writei32l(stream, MARSHAL_MAGIC_ARRAY) ||
-            !writei32l(stream, (i32)sq_getsize(v, idx)))
+            !writei32l(stream, (i32)sq_getsize(g_VM, idx)))
         {
             return false;
         }
-        sq_pushnull(v); // will be substituted with an iterator by squirrel
-        while (SQ_SUCCEEDED(sq_next(v, idx))) {
-            if (!DumpObject(v, stream, sq_gettop(v))) { // marshal value
-                sq_settop(v, oldtop);
+        sq_pushnull(g_VM); // will be substituted with an iterator by squirrel
+        while (SQ_SUCCEEDED(sq_next(g_VM, idx))) {
+            if (!DumpObject(sq_gettop(g_VM), stream)) { // marshal value
+                sq_settop(g_VM, oldtop);
                 return false;
             }
-            sq_pop(v, 2); // pop key and value
+            sq_pop(g_VM, 2); // pop key and value
         }
-        sq_poptop(v); // pop iterator
+        sq_poptop(g_VM); // pop iterator
         return true;
     }
     case OT_CLOSURE: {
         if (!writei32l(stream, MARSHAL_MAGIC_CLOSURE)) {
             return false;
         }
-        sq_push(v, idx);
-        bool sqsucceeded = SQ_SUCCEEDED(sq_writeclosure(v, write_closure_callback, stream));
-        sq_poptop(v);
+        sq_push(g_VM, idx);
+        bool sqsucceeded = SQ_SUCCEEDED(sq_writeclosure(g_VM, write_closure_callback, stream));
+        sq_poptop(g_VM);
         return sqsucceeded;
     }
     case OT_INSTANCE: {
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
         if (!writei32l(stream, MARSHAL_MAGIC_INSTANCE)) {
             return false;
         }
-        sq_getclass(v, idx);
+        sq_getclass(g_VM, idx);
         SQUserPointer tt = 0;
-        sq_gettypetag(v, -1, &tt);
+        sq_gettypetag(g_VM, -1, &tt);
 #ifdef _SQ64
         if (!writei64l(stream, (i64)tt)) {
 #else
         if (!writei32l(stream, (i32)tt)) {
 #endif
-            sq_settop(v, oldtop);
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        sq_pushstring(v, "_dump", -1);
-        if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
-            sq_settop(v, oldtop);
+        sq_pushstring(g_VM, "_dump", -1);
+        if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        if (sq_gettype(v, -1) != OT_CLOSURE &&
-            sq_gettype(v, -1) != OT_NATIVECLOSURE)
+        if (sq_gettype(g_VM, -1) != OT_CLOSURE &&
+            sq_gettype(g_VM, -1) != OT_NATIVECLOSURE)
         {
-            sq_settop(v, oldtop);
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        sq_pushroottable(v); // this
-        sq_push(v, idx); // push the instance to marshal
-        BindStream(v, stream); // push the output stream
-        bool succeeded = SQ_SUCCEEDED(sq_call(v, 3, SQFalse, SQTrue));
-        sq_settop(v, oldtop);
+        sq_pushroottable(g_VM); // this
+        sq_push(g_VM, idx); // push the instance to marshal
+        BindStream(stream); // push the output stream
+        bool succeeded = SQ_SUCCEEDED(sq_call(g_VM, 3, SQFalse, SQTrue));
+        sq_settop(g_VM, oldtop);
         return succeeded;
     }
     default:
@@ -4741,19 +4173,13 @@ static bool DumpObject(HSQUIRRELVM v, SQInteger idx, IStream* stream)
 // DumpObject(object, stream)
 static SQInteger script_DumpObject(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 3)) {
-        THROW_ERROR("Invalid type of parameter stream")
-    }
-    IStream* stream = GetStream(v, 3);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
     if (!stream->isOpen() || !stream->isWriteable()) {
         THROW_ERROR("Invalid stream")
     }
-
-    // marshal
-    if (!DumpObject(v, 2, stream)) {
-        THROW_ERROR("serialization failed")
+    if (!DumpObject(2, stream)) {
+        THROW_ERROR("Error serializing")
     }
     RET_VOID()
 }
@@ -4766,7 +4192,7 @@ static SQInteger read_closure_callback(SQUserPointer p, SQUserPointer buf, SQInt
 }
 
 //-----------------------------------------------------------------
-static bool LoadObject(HSQUIRRELVM v, IStream* stream)
+bool LoadObject(IStream* stream)
 {
     assert(stream);
 
@@ -4778,7 +4204,7 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
             s_BufferSize = 256;
         } catch (const std::bad_alloc&) {
             ReportOutOfMemory();
-            return;
+            return false;
         }
     }
 
@@ -4787,35 +4213,35 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
     }
 
     // read type
-    u32 type;
-    if (!readi32l(stream, (i32)type)) {
+    i32 type;
+    if (!readi32l(stream, type)) {
         return false;
     }
 
-    switch (type) {
+    switch ((u32)type) {
     case MARSHAL_MAGIC_NULL: {
-        sq_pushnull(v);
+        sq_pushnull(g_VM);
         return true;
     }
     case MARSHAL_MAGIC_BOOL_TRUE: {
-        sq_pushbool(v, SQTrue);
+        sq_pushbool(g_VM, SQTrue);
         return true;
     }
     case MARSHAL_MAGIC_BOOL_FALSE: {
-        sq_pushbool(v, SQFalse);
+        sq_pushbool(g_VM, SQFalse);
         return true;
     }
     case MARSHAL_MAGIC_INTEGER: {
 #ifdef _SQ64
-        u64 i;
-        if (!readi64l(stream, (i64)i)) {
+        i64 i;
+        if (!readi64l(stream, i)) {
 #else
-        u32 i;
-        if (!readi32l(stream, (i32)i)) {
+        i32 i;
+        if (!readi32l(stream, i)) {
 #endif
             return false;
         }
-        sq_pushinteger(v, (SQInteger)i);
+        sq_pushinteger(g_VM, (SQInteger)i);
         return true;
     }
     case MARSHAL_MAGIC_FLOAT: {
@@ -4828,16 +4254,18 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
 #endif
             return false;
         }
-        sq_pushfloat(v, f);
+        sq_pushfloat(g_VM, f);
         return true;
     }
     case MARSHAL_MAGIC_STRING: {
-        u32 len;
-        if (!readi32l(stream, (i32)len)) {
+        i32 len;
+        if (!readi32l(stream, len)) {
             return false;
         }
-        if (len == 0) {
-            sq_pushstring(v, "", -1);
+        if (len < 0) {
+            return false;
+        } else if (len == 0) {
+            sq_pushstring(g_VM, "", -1);
             return true; // ok, empty string
         }
         if (s_BufferSize < len) {
@@ -4852,59 +4280,68 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
         if (stream->read(s_Buffer.get(), len) != len) {
             return false;
         }
-        sq_pushstring(v, (const SQChar*)s_Buffer.get(), len);
+        sq_pushstring(g_VM, (const SQChar*)s_Buffer.get(), len);
         return true;
     }
     case MARSHAL_MAGIC_TABLE: {
-        int oldtop = sq_gettop(v);
-        u32 size;
-        if (!readi32l(stream, (i32)size)) {
+        int oldtop = sq_gettop(g_VM);
+        i32 size;
+        if (!readi32l(stream, size)) {
             return false;
         }
-        sq_newtable(v);
-        for (u32 i = 0; i < size; ++i) {
-            if (!LoadObject(v, stream) || // unmarshal key
-                !LoadObject(v, stream))   // unmarshal value
+        if (size < 0) {
+            return false;
+        }
+        sq_newtable(g_VM);
+        for (int i = 0; i < size; ++i) {
+            if (!LoadObject(stream) || // unmarshal key
+                !LoadObject(stream))   // unmarshal value
             {
-                sq_settop(v, oldtop);
+                sq_settop(g_VM, oldtop);
                 return false;
             }
-            sq_newslot(v, -3, SQFalse);
+            sq_newslot(g_VM, -3, SQFalse);
         }
         return true;
     }
     case MARSHAL_MAGIC_ARRAY: {
-        int oldtop = sq_gettop(v);
-        u32 size;
-        if (!readi32l(stream, (i32)size)) {
+        int oldtop = sq_gettop(g_VM);
+        i32 size;
+        if (!readi32l(stream, size)) {
             return false;
         }
-        sq_newarray(v, 0);
-        for (u32 i = 0; i < size; ++i) {
-            if (!LoadObject(v, stream)) { // unmarshal value
-                sq_settop(v, oldtop);
+        if (size < 0) {
+            return false;
+        }
+        sq_newarray(g_VM, 0);
+        for (int i = 0; i < size; ++i) {
+            if (!LoadObject(stream)) { // unmarshal value
+                sq_settop(g_VM, oldtop);
                 return false;
             }
-            sq_arrayappend(v, -2);
+            sq_arrayappend(g_VM, -2);
         }
         return true;
     }
     case MARSHAL_MAGIC_CLOSURE: {
-        return SQ_SUCCEEDED(sq_readclosure(v, read_closure_callback, stream));
+        return SQ_SUCCEEDED(sq_readclosure(g_VM, read_closure_callback, stream));
     }
     case MARSHAL_MAGIC_INSTANCE: {
-        int oldtop = sq_gettop(v);
+        int oldtop = sq_gettop(g_VM);
 #ifdef _SQ64
-        u64 tt;
-        if (!readi64l(stream, (i64)tt)) {
+        i64 tt;
+        if (!readi64l(stream, tt)) {
 #else
-        u32 tt;
-        if (!readi32l(stream, (i32)tt)) {
+        i32 tt;
+        if (!readi32l(stream, tt)) {
 #endif
             return false;
         }
-        u32 len;
-        if (!readi32l(stream, (i32)len)) {
+        i32 len;
+        if (!readi32l(stream, len)) {
+            return false;
+        }
+        if (len <= 0) {
             return false;
         }
         if (s_BufferSize < len) {
@@ -4919,46 +4356,46 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
         if (stream->read(s_Buffer.get(), len) != len) {
             return false;
         }
-        sq_pushroottable(v);
-        sq_pushstring(v, (const SQChar*)s_Buffer.get(), len);
-        if (!SQ_SUCCEEDED(sq_get(v, -2))) {
-            sq_settop(v, oldtop);
+        sq_pushroottable(g_VM);
+        sq_pushstring(g_VM, (const SQChar*)s_Buffer.get(), len);
+        if (!SQ_SUCCEEDED(sq_get(g_VM, -2))) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        if (sq_gettype(v, -1) != OT_CLASS) {
-            sq_settop(v, oldtop);
+        if (sq_gettype(g_VM, -1) != OT_CLASS) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
         SQUserPointer class_tt = 0;
-        sq_gettypetag(v, -1, &class_tt);
+        sq_gettypetag(g_VM, -1, &class_tt);
         if ((SQUserPointer)tt != class_tt) {
-            sq_settop(v, oldtop);
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        sq_pushstring(v, "_load", -1);
-        if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
-            sq_settop(v, oldtop);
+        sq_pushstring(g_VM, "_load", -1);
+        if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        if (sq_gettype(v, -1) != OT_CLOSURE &&
-            sq_gettype(v, -1) != OT_NATIVECLOSURE)
+        if (sq_gettype(g_VM, -1) != OT_CLOSURE &&
+            sq_gettype(g_VM, -1) != OT_NATIVECLOSURE)
         {
-            sq_settop(v, oldtop);
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        sq_pushroottable(v); // this
-        BindStream(v, stream); // push the input stream
-        if (!SQ_SUCCEEDED(sq_call(v, 2, SQTrue, SQTrue))) {
-            sq_settop(v, oldtop);
+        sq_pushroottable(g_VM); // this
+        BindStream(stream); // push the input stream
+        if (!SQ_SUCCEEDED(sq_call(g_VM, 2, SQTrue, SQTrue))) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        if (sq_gettype(v, -1) != OT_INSTANCE) {
-            sq_settop(v, oldtop);
+        if (sq_gettype(g_VM, -1) != OT_INSTANCE) {
+            sq_settop(g_VM, oldtop);
             return false;
         }
-        int numtopop = (sq_gettop(v) - oldtop) - 1;
+        int numtopop = (sq_gettop(g_VM) - oldtop) - 1;
         while (numtopop > 0) {
-            sq_remove(v, -2);
+            sq_remove(g_VM, -2);
             numtopop--;
         }
         return true;
@@ -4972,19 +4409,13 @@ static bool LoadObject(HSQUIRRELVM v, IStream* stream)
 // LoadObject(stream)
 static SQInteger script_LoadObject(HSQUIRRELVM v)
 {
-    // get stream
-    if (!IsStream(v, 2)) {
-        THROW_ERROR("Invalid type of parameter stream")
-    }
-    IStream* stream = GetStream(v, 2);
-    assert(stream);
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
     if (!stream->isOpen() || !stream->isReadable()) {
         THROW_ERROR("Invalid stream")
     }
-
-    // load
-    if (!LoadObject(v, stream)) {
-        THROW_ERROR("deserialization failed")
+    if (!LoadObject(stream)) {
+        THROW_ERROR("Error deserializing")
     }
     return 1;
 }
@@ -5008,7 +4439,7 @@ static SQInteger runtime_error_handler(HSQUIRRELVM v)
 {
     int top = sq_gettop(v);
     sq_tostring(v, 2);
-    const SQChar* error = _SC("N/A");
+    const SQChar* error = "N/A";
     sq_getstring(v, -1, &error);
     assert(g_Log);
     g_Log->error() << "Script error: " << error;
@@ -5064,7 +4495,7 @@ static void print_func(HSQUIRRELVM v, const SQChar* format, ...)
 #endif
     va_end(arglist);
     if (g_Log) {
-        g_Log->debug() << "Print: " << (const char*)s_Buffer.get();
+        g_Log->debug() << "Script output: " << (const char*)s_Buffer.get();
     }
 }
 
@@ -5073,15 +4504,10 @@ bool InitScript(const Log& log)
 {
     assert(!g_VM);
 
-    // print Squirrel version
-    log.info() << "Using Squirrel " << (SQUIRREL_VERSION_NUMBER / 100)       \
-                                "." << ((SQUIRREL_VERSION_NUMBER / 10) % 10) \
-                                "." << (SQUIRREL_VERSION_NUMBER % 10);
-
-    log.info() << "Opening Squirrel VM";
+    // open squirrel vm
     g_VM = sq_open(1024);
     if (!g_VM) {
-        log.error("Failed opening Squirrel VM");
+        log.error() << "Failed opening Squirrel VM";
         return false;
     }
     sq_setcompilererrorhandler(g_VM, compiler_error_handler);
@@ -5091,19 +4517,17 @@ bool InitScript(const Log& log)
 
     sq_pushroottable(g_VM); // push root table
 
-    // register standard math library
-    log.info() << "Registering Squirrel's standard math library";
-    if (!SQ_SUCCEEDED(sqstd_register_mathlib(g_VM)) {
-        log.error("Failed registering Squirrel's standard math library");
+    // register standard libraries
+    if (!SQ_SUCCEEDED(sqstd_register_mathlib(g_VM))) {
+        log.error() << "Failed registering math library";
+        goto lib_init_failed;
+    }
+    if (!SQ_SUCCEEDED(sqstd_register_stringlib(g_VM))) {
+        log.error() << "Failed registering string library";
         goto lib_init_failed;
     }
 
-    // register standard string library (string formatting and regular expression matching routines)
-    log.info() << "Registering Squirrel's standard string library";
-    if (!SQ_SUCCEEDED(sqstd_register_stringlib(g_VM)) {
-        log.error("Failed registering Squirrel's standard string library");
-        goto lib_init_failed;
-    }
+    // TODO register api
 
     sq_poptop(g_VM); // pop root table
 
@@ -5118,11 +4542,9 @@ lib_init_failed:
 }
 
 //-----------------------------------------------------------------
-void DeinitScript(const Log& log)
+void DeinitScript()
 {
-    assert(g_VM);
     if (g_VM) {
-        log.info() << "Closing Squirrel VM");
         sq_close(g_VM);
         g_VM = 0;
     }
@@ -5130,35 +4552,39 @@ void DeinitScript(const Log& log)
 }
 
 //-----------------------------------------------------------------
-bool RunMain(const Log& log, const std::string& script, const std::vector<std::string>& args)
+void RunGame(const Log& log, const std::string& script, const std::vector<std::string>& args)
 {
     int old_top = sq_gettop(g_VM); // save stack top
 
     // load script
-    if (DoesFileExist(filename)) {
-        FilePtr file = OpenFile(filename);
-        if (LoadObject(g_VM, file.get())) { // try loading as bytecode
+    if (DoesFileExist(script)) {
+        FilePtr file = OpenFile(script);
+        if (LoadObject(file.get())) { // try loading as bytecode
             if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
-                log.error() << "Error loading script bytecode";
-                goto error;
+                log.error() << "Error loading bytecode";
+                sq_settop(g_VM, old_top);
+                return;
             }
         } else { // try compiling as plain text
             file->seek(0); // LoadObject changed the stream position, set it back to beginning
             if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
                 log.error() << "Error compiling script";
-                goto error;
+                sq_settop(g_VM, old_top);
+                return;
             }
         }
     } else { // file does not exist
-        log.error() << "Script does not exist";
-        goto error;
+        log.error() << "Script file does not exist";
+        sq_settop(g_VM, old_top);
+        return;
     }
 
     // run script
     sq_pushroottable(g_VM); // this
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQFalse, SQTrue))) {
         log.error() << "Error executing script";
-        goto error;
+        sq_settop(g_VM, old_top);
+        return;
     }
     sq_settop(g_VM, old_top); // restore stack top
 
@@ -5167,24 +4593,20 @@ bool RunMain(const Log& log, const std::string& script, const std::vector<std::s
     sq_pushstring(g_VM, "main", -1);
     if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
         log.error() << "Entry point main not defined";
-        goto error;
+        sq_settop(g_VM, old_top);
+        return;
     }
-    if (!sq_gettype(g_VM, -1) == OT_CLOSURE) {
-        log.error() << "Entry point main is not a function";
-        goto error;
+    if (sq_gettype(g_VM, -1) != OT_CLOSURE) {
+        log.error() << "Symbol main is not a function";
+        sq_settop(g_VM, old_top);
+        return;
     }
     sq_pushroottable(g_VM); // this
-    for (int i = 0; i < args.size(); i++) {
+    for (int i = 0; i < (int)args.size(); i++) {
         sq_pushstring(g_VM, args[i].c_str(), -1);
     }
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1 + args.size(), SQFalse, SQTrue))) {
         log.error() << "Error calling main";
-        goto error;
     }
-    sq_settop(g_VM, old_top); // restore stack top
-    return true;
-
-error:
-    sq_settop(g_VM, old_top); // restore stack top
-    return false;
+    sq_settop(g_VM, old_top);
 }

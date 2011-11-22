@@ -1,7 +1,7 @@
 #ifndef JOYSTICK_HPP
 #define JOYSTICK_HPP
 
-#include "ForceEffect.hpp"
+#include "../common/types.hpp"
 
 
 enum {

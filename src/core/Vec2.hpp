@@ -12,7 +12,7 @@ struct Vec2 {
 
     Vec2() : x(0), y(0) { }
     template<typename U>
-    Vec2(U x_, U y_) : x(x_), y(y_) { }
+    Vec2(U x_, U y_) : x((T)x_), y((T)y_) { }
     Vec2(const Vec2& that) : x(that.x), y(that.y) { }
 
     Vec2& operator=(const Vec2& that) {
@@ -37,8 +37,9 @@ struct Vec2 {
         return Vec2(x - rhs.x, y - rhs.y);
     }
 
-    Vec2 operator*(T rhs) {
-        return Vec2(x * rhs, y * rhs);
+    template<typename U>
+    Vec2 operator*(U scalar) {
+        return Vec2(x * scalar, y * scalar);
     }
 
     Vec2& operator+=(const Vec2& rhs) {
@@ -53,14 +54,20 @@ struct Vec2 {
         return *this;
     }
 
-    Vec2& operator*=(T rhs) {
-        x *= rhs;
-        y *= rhs;
+    template<typename U>
+    Vec2& operator*=(U scalar) {
+        x = (T)(x * scalar);
+        y = (T)(y * scalar);
         return *this;
     }
 
+    void set(T x_, T y_) {
+        x = x_;
+        y = y_;
+    }
+
     float len() const {
-        return std::sqrt(x * x + y * y);
+        return sqrt((float)(x * x + y * y));
     }
 
     T lenSQ() const {
@@ -78,19 +85,8 @@ struct Vec2 {
 
     void unit() {
         float l = len();
-        x /= l;
-        y /= l;
-    }
-
-    template<typename U>
-    void set(U x_, U y_) {
-        x = x_;
-        y = y_;
-    }
-
-    void set(const Vec2& that) {
-        x = that.x;
-        y = that.y;
+        x = (T)(x / l);
+        y = (T)(y / l);
     }
 
     float distFrom(const Vec2& that) const {
@@ -102,7 +98,7 @@ struct Vec2 {
     }
 
     void rotateBy(float degrees, const Vec2& center = Vec2()) {
-        degrees *= 3.1415926535 / 180.0;
+        degrees *= 3.14159f / 180.0f;
         const float cs = cos(degrees);
         const float sn = sin(degrees);
         x -= center.x;
@@ -114,35 +110,35 @@ struct Vec2 {
 
     float getAngle() const {
         if (y == 0) {
-            return x < 0.0 ? 180.0f : 0.0f;
-        } else if (x == 0.0) {
-            return y < 0.0 ? 270.0f : 90.0f;
+            return x < 0.0f ? 180.0f : 0.0f;
+        } else if (x == 0.0f) {
+            return y < 0.0f ? 270.0f : 90.0f;
         }
-        if ( y > 0.0) {
+        if ( y > 0.0f) {
             if (x > 0.0f) {
-                return (float)(atan(y / x) * (180.0 / 3.1415926535));
+                return (float)(atan((float)(y / x)) * (180.0f / 3.14159f));
             } else {
-                return (float)(180.0 - atan(y / -x) * (180.0 / 3.1415926535));
+                return (float)(180.0f - atan((float)(y / -x)) * (180.0f / 3.14159f));
             }
         } else {
-            if (x > 0) {
-                return (float)(360.0 - atan(-y / x) * (180.0 / 3.1415926535));
+            if (x > 0.0f) {
+                return (float)(360.0f - atan((float)(-y / x)) * (180.0f / 3.14159f));
             } else {
-                return (float)(180.0 + atan(-y / -x) * (180.0 / 3.1415926535));
+                return (float)(180.0f + atan((float)(-y / -x)) * (180.0f / 3.14159f));
             }
         }
     }
 
     float getAngleWith(const Vec2& that) const {
-        float tmp = x*that.x + y*that.y;
-        if (tmp == 0.0) {
-            return 90.0;
+        float tmp = (float)(x*that.x + y*that.y);
+        if (tmp == 0.0f) {
+            return 90.0f;
         }
         tmp = tmp / sqrt((float)((x*x + y*y) * (that.x*that.x + that.y*that.y)));
-        if (tmp < 0.0) {
+        if (tmp < 0.0f) {
             tmp = -tmp;
         }
-        return (float)(atan(sqrt(1 - tmp*tmp) / tmp) * (180.0 / 3.1415926535));
+        return (float)(atan(sqrt(1 - tmp*tmp) / tmp) * (180.0f / 3.14159f));
     }
 
     bool isBetween(const Vec2& begin, const Vec2& end) const {
@@ -156,7 +152,7 @@ struct Vec2 {
     }
 
     Vec2 getInterpolated(const Vec2& that, float d) const {
-        float inv = 1.0 - d;
+        float inv = 1.0f - d;
         return Vec2((T)(that.x*inv + x*d), (T)(that.y*inv + y*d));
     }
 

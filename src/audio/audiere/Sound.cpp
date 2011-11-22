@@ -3,15 +3,15 @@
 
 //-----------------------------------------------------------------
 Sound*
-Sound::Create(audiere::SoundEffect* sound)
+Sound::Create(audiere::OutputStream* sound)
 {
     assert(sound);
     return new Sound(sound);
 }
 
 //-----------------------------------------------------------------
-Sound::Sound(audiere::SoundEffect* sound)
-: _sound(sound)
+Sound::Sound(audiere::OutputStream* sound)
+    : _sound(sound)
 {
     _sound->ref();
 }

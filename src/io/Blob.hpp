@@ -4,7 +4,7 @@
 #include "../common/types.hpp"
 #include "../common/RefPtr.hpp"
 #include "../common/RefImpl.hpp"
-#include "../filesystem/IStream.hpp"
+#include "IStream.hpp"
 
 
 class Blob : public RefImpl<IStream> {

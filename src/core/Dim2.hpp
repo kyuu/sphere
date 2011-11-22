@@ -11,17 +11,17 @@ struct Dim2 {
 
     Dim2() : w(0), h(0) { }
     template<typename U>
-    Dim2(U w_, U h_) : w(w_), h(h_) { }
-    Dim2(const Dim2& that) : w(that.w), h(that.h) { }
+    Dim2(U w, U h) : width(w), height(h) { }
+    Dim2(const Dim2& that) : width(that.width), height(that.height) { }
 
     Dim2& operator=(const Dim2& that) {
-        w = that.w;
-        h = that.h;
+        width  = that.width;
+        height = that.height;
         return *this;
     }
 
     T getArea() const {
-        return w * h;
+        return width * height;
     }
 
 };

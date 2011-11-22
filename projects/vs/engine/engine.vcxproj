@@ -10,6 +10,30 @@
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\src\audio\audiere\audio.cpp" />
+    <ClCompile Include="..\..\..\src\audio\audiere\Sound.cpp" />
+    <ClCompile Include="..\..\..\src\audio\audiere\SoundEffect.cpp" />
+    <ClCompile Include="..\..\..\src\compression\ZStream.cpp" />
+    <ClCompile Include="..\..\..\src\error.cpp" />
+    <ClCompile Include="..\..\..\src\filesystem\boost\filesystem.cpp" />
+    <ClCompile Include="..\..\..\src\filesystem\File.cpp" />
+    <ClCompile Include="..\..\..\src\graphics\Canvas.cpp" />
+    <ClCompile Include="..\..\..\src\image\corona\image.cpp" />
+    <ClCompile Include="..\..\..\src\input\sdl\input.cpp" />
+    <ClCompile Include="..\..\..\src\io\Blob.cpp" />
+    <ClCompile Include="..\..\..\src\io\endian.cpp" />
+    <ClCompile Include="..\..\..\src\io\io.cpp" />
+    <ClCompile Include="..\..\..\src\Log.cpp" />
+    <ClCompile Include="..\..\..\src\main.cpp" />
+    <ClCompile Include="..\..\..\src\script\script.cpp" />
+    <ClCompile Include="..\..\..\src\system\win32\system.cpp" />
+    <ClCompile Include="..\..\..\src\video\sdl_opengl\Texture.cpp" />
+    <ClCompile Include="..\..\..\src\video\sdl_opengl\video.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\test.rc" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{05538D5A-563D-4EB0-8434-4C1C675A51E5}</ProjectGuid>
     <RootNamespace>engine</RootNamespace>
@@ -41,13 +65,14 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>/dev/libs/vs/sdl13/include;/dev/libs/vs/squirrel3/include;/dev/libs/vs/audiere/include;/dev/libs/vs/corona/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>/dev/libs/vs/sdl13/include;/dev/libs/vs/squirrel3/include;/dev/libs/vs/audiere/include;/dev/libs/vs/corona/include;/dev/libs/vs/zlib/include;/dev/libs/vs/boost/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;_CRT_SECURE_NO_WARNINGS;BOOST_ALL_NO_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(ProjectDir)..\..\..\build\$(TargetName)$(TargetExt)</OutputFile>
-      <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>sdl.lib;squirrel.lib;sqstdlib.lib;audiere.lib;corona.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;/dev/libs/vs/zlib/lib;/dev/libs/vs/boost/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -56,20 +81,18 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>/dev/libs/vs/sdl13/include;/dev/libs/vs/squirrel3/include;/dev/libs/vs/audiere/include;/dev/libs/vs/corona/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>/dev/libs/vs/sdl13/include;/dev/libs/vs/squirrel3/include;/dev/libs/vs/audiere/include;/dev/libs/vs/corona/include;/dev/libs/vs/zlib/include;/dev/libs/vs/boost/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;_CRT_SECURE_NO_WARNINGS;BOOST_ALL_NO_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <OutputFile>$(ProjectDir)..\..\..\build\$(TargetName)$(TargetExt)</OutputFile>
-      <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>sdl.lib;squirrel.lib;sqstdlib.lib;audiere.lib;corona.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;/dev/libs/vs/zlib/lib;/dev/libs/vs/boost/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\..\src\main.cpp" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

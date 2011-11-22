@@ -29,7 +29,7 @@ private:
     ~Sound();
 
 private:
-    audiere::OutputStream _sound;
+    audiere::OutputStream* _sound;
 };
 
 

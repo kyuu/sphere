@@ -150,26 +150,29 @@ void btoh8(void* p)
 //-----------------------------------------------------------------
 void swap2(void* p, int len)
 {
+    word* ptr = (word*)p;
     for (int i = 0; i < len; i++) {
-        _s2((word*)p);
-        ((word*)p)++;
+        _s2(ptr);
+        ptr++;
     }
 }
 
 //-----------------------------------------------------------------
 void swap4(void* p, int len)
 {
+    dword* ptr = (dword*)p;
     for (int i = 0; i < len; i++) {
-        _s4((dword*)p);
-        ((dword*)p)++;
+        _s4(ptr);
+        ptr++;
     }
 }
 
 //-----------------------------------------------------------------
 void swap8(void* p, int len)
 {
+    qword* ptr = (qword*)p;
     for (int i = 0; i < len; i++) {
-        _s8((qword*)p);
-        ((qword*)p)++;
+        _s8(ptr);
+        ptr++;
     }
 }

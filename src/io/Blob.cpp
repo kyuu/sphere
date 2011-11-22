@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstring>
 #include <cmath>
+#include <stdexcept>
 #include "../error.hpp"
 #include "endian.hpp"
 #include "Blob.hpp"
@@ -33,7 +34,7 @@ Blob::Create(const void* buf, int size)
         BlobPtr blob = new Blob();
         blob->assign(buf, size);
         return blob.release();
-    } catch (const std::bad_alloc& e) {
+    } catch (const std::bad_alloc&) {
         ReportOutOfMemory();
         return 0;
     }
@@ -153,7 +154,7 @@ Blob::reserve(int size)
             delete[] _buffer;
             _buffer = new_buffer;
             _reserved = new_reserved;
-        } catch (const std::bad_alloc& e) {
+        } catch (const std::bad_alloc&) {
             ReportOutOfMemory();
         }
     }
@@ -273,8 +274,8 @@ Blob::seek(int offset, int origin)
 }
 
 //-----------------------------------------------------------------
-uint
-Blob::read(void* buffer, uint size)
+int
+Blob::read(void* buffer, int size)
 {
     assert(buffer);
     if (_eof || size == 0) {
@@ -284,7 +285,7 @@ Blob::read(void* buffer, uint size)
         _eof = true;
         return 0;
     }
-    uint num_read = ((size <= _size - _streampos) ? size : _size - _streampos);
+    int num_read = ((size <= _size - _streampos) ? size : _size - _streampos);
     memcpy(buffer, _buffer + _streampos, num_read);
     _streampos += num_read;
     if (num_read < size) {
@@ -294,8 +295,8 @@ Blob::read(void* buffer, uint size)
 }
 
 //-----------------------------------------------------------------
-uint
-Blob::write(const void* buffer, uint size)
+int
+Blob::write(const void* buffer, int size)
 {
     assert(buffer);
     if (size == 0) {

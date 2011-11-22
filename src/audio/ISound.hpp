@@ -1,9 +1,8 @@
 #ifndef ISOUND_HPP
 #define ISOUND_HPP
 
-#include "../common/refptr.hpp"
-#include "../common/irefcounted.hpp"
-#include "../common/types.hpp"
+#include "../common/IRefCounted.hpp"
+#include "../common/RefPtr.hpp"
 
 
 class ISound : public IRefCounted {

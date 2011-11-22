@@ -3,6 +3,7 @@
 
 #include "../common/IRefCounted.hpp"
 #include "../common/RefPtr.hpp"
+#include "../graphics/Canvas.hpp"
 
 
 class ITexture : public IRefCounted {

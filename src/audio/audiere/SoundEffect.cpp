@@ -11,7 +11,7 @@ SoundEffect::Create(audiere::SoundEffect* soundeffect)
 
 //-----------------------------------------------------------------
 SoundEffect::SoundEffect(audiere::SoundEffect* soundeffect)
-: _soundeffect(soundeffect)
+    : _soundeffect(soundeffect)
 {
     _soundeffect->ref();
 }

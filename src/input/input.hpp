@@ -11,7 +11,7 @@
 void UpdateInput();
 
 bool InitInput(const Log& log);
-void DeinitInput(const Log& log);
+void DeinitInput();
 
 
 #endif

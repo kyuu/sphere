@@ -24,7 +24,7 @@ Canvas::Create(int width, int height, const RGBA* pixels)
 }
 
 //-----------------------------------------------------------------
-Canvas::Canvas(int width, int height)
+Canvas::Canvas()
     : _width(0)
     , _height(0)
     , _pixels(0)
@@ -49,9 +49,9 @@ Canvas::internalInit(int width, int height)
 
 //-----------------------------------------------------------------
 Canvas*
-Canvas::cloneSection(const Recti& sec)
+Canvas::cloneSection(const Recti& section)
 {
-    sec = sec.getIntersection(Recti(0, 0, _width - 1, _height - 1));
+    Recti sec = section.getIntersection(Recti(0, 0, _width - 1, _height - 1));
     if (!sec.isValid()) {
         return 0;
     }
@@ -110,7 +110,7 @@ Canvas::resize(int width, int height)
     RGBA* new_pixels = 0;
     try {
         new_pixels = new RGBA[width * height];
-    } catch (const std::bad_alloc& e) {
+    } catch (const std::bad_alloc&) {
         ReportOutOfMemory();
         return;
     }

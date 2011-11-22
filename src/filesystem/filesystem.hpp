@@ -19,12 +19,12 @@ bool   RenameFile(const std::string& filenameFrom, const std::string& filenameTo
 bool   GetFileList(const std::string& directory, std::vector<std::string>& fileList);
 
 bool InitFilesystem(const Log& log);
-void DeinitFilesystem(const Log& log);
+void DeinitFilesystem();
 const std::string& GetEnginePath();
-const std::string& GetCurrentPath();
+std::string GetCurrentPath();
 bool SetCurrentPath(const std::string& p);
 const std::string& GetDataPath();
-bool SetDataPath(const std::string& p);
+void SetDataPath(const std::string& p);
 
 
 #endif

@@ -6,7 +6,7 @@
 
 
 Canvas* LoadImage(IStream* stream);
-bool    SaveImage(IStream* stream, Canvas* image);
+bool    SaveImage(Canvas* image, IStream* stream);
 
 
 #endif

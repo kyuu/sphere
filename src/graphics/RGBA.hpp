@@ -12,13 +12,13 @@ struct RGBA {
 
     RGBA() : red(0), green(0), blue(0), alpha(255) { }
     RGBA(u8 r, u8 g, u8 b, u8 a = 255) : red(r), green(g), blue(b), alpha(a) { }
-    RGBA(const RGBA& c) : red(c.red), green(c.green), blue(c.blue), alpha(c.alpha) { }
+    RGBA(const RGBA& that) : red(that.red), green(that.green), blue(that.blue), alpha(that.alpha) { }
 
-    bool operator==(const RGBA& c) {
-        return (r == c.r &&
-                g == c.g &&
-                b == c.b &&
-                a == c.a);
+    bool operator==(const RGBA& rhs) {
+        return (red   == rhs.red   &&
+                green == rhs.green &&
+                blue  == rhs.blue  &&
+                alpha == rhs.alpha);
     }
 
     bool operator!=(const RGBA& rhs) {
@@ -27,6 +27,10 @@ struct RGBA {
 
     static u32 Pack(u8 red, u8 green, u8 blue, u8 alpha = 255) {
         return ((red << 24) | (green << 16) | (blue << 8) | alpha);
+    }
+
+    static u32 Pack(const RGBA& that) {
+        return Pack(that.red, that.green, that.blue, that.alpha);
     }
 
     static RGBA Unpack(u32 packed) {

@@ -1,6 +1,7 @@
 #ifndef VIDEO_HPP
 #define VIDEO_HPP
 
+#include <vector>
 #include "../Log.hpp"
 #include "../graphics/Canvas.hpp"
 #include "../graphics/RGBA.hpp"
@@ -12,6 +13,7 @@
 
 void GetSupportedVideoModes(std::vector<Dim2i>& out);
 bool OpenWindow(int width, int height, bool fullscreen);
+bool IsWindowOpen();
 int  GetWindowWidth();
 int  GetWindowHeight();
 bool IsWindowFullscreen();
@@ -20,10 +22,10 @@ const char* GetWindowTitle();
 void SetWindowTitle(const char* title);
 void SetWindowIcon(Canvas* canvas);
 void SwapFrameBuffers();
-bool GetClipRect(Recti& out);
-void SetClipRect(const Recti& clip);
+bool GetFrameBufferClipRect(Recti& out);
+void SetFrameBufferClipRect(const Recti& clip);
 ITexture* CreateTexture(Canvas* pixels);
-ITexture* CloneFrameBuffer(const Recti& section);
+ITexture* CloneFrameBufferSection(const Recti& section);
 
 // 2D rendering
 void DrawPoint(const Vec2i& pos, const RGBA& col);
@@ -37,7 +39,7 @@ void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask = RGBA(255,
 void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
 
 bool InitVideo(const Log& log);
-void DeinitVideo(const Log& log);
+void DeinitVideo();
 
 
 #endif

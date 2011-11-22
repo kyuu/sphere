@@ -5,7 +5,7 @@
 #include <string>
 #include "../common/types.hpp"
 #include "../common/RefImpl.hpp"
-#include "IFile.hpp"
+#include "../io/IFile.hpp"
 
 
 class File : public RefImpl<IFile> {

@@ -6,9 +6,9 @@
 #include "../ISoundEffect.hpp"
 
 
-class AudiereSoundEffect : public RefImpl<ISoundEffect> {
+class SoundEffect : public RefImpl<ISoundEffect> {
 public:
-    static AudiereSoundEffect* Create(audiere::SoundEffect* soundeffect);
+    static SoundEffect* Create(audiere::SoundEffect* soundeffect);
 
     // ISoundEffect implementation
     void play();
@@ -17,8 +17,8 @@ public:
     void setVolume(int volume);
 
 private:
-    explicit AudiereSoundEffect(audiere::SoundEffect* soundeffect);
-    ~AudiereSoundEffect();
+    explicit SoundEffect(audiere::SoundEffect* soundeffect);
+    ~SoundEffect();
 
 private:
     audiere::SoundEffect* _soundeffect;

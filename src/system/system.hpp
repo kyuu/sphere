@@ -10,7 +10,7 @@ int  GetRandom();
 void Sleep(int ms);
 
 bool InitSystem(const Log& log);
-void DeinitSystem(const Log& log);
+void DeinitSystem();
 
 
 #endif

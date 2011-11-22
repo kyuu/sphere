@@ -1,3 +1,5 @@
+#include <cassert>
+#include <memory>
 #include <corona.h>
 #include "../image.hpp"
 
@@ -6,7 +8,7 @@
 struct CoronaFileAdapter : public corona::DLLImplementation<corona::File>
 {
     CoronaFileAdapter(IStream* stream) : _stream(0) {
-        assert(s);
+        assert(stream);
         stream->grab();
         _stream = stream;
     }
@@ -58,12 +60,12 @@ Canvas* LoadImage(IStream* stream)
 }
 
 //-----------------------------------------------------------------
-bool SaveImage(IStream* stream, Canvas* image)
+bool SaveImage(Canvas* image, IStream* stream)
 {
     if (!stream || !stream->isWriteable()) {
         return false;
     }
-    std::auto_ptr<corona::Image> img(corona::CreateImage(i->width(), i->height(), corona::PF_R8G8B8A8));
+    std::auto_ptr<corona::Image> img(corona::CreateImage(image->getWidth(), image->getHeight(), corona::PF_R8G8B8A8));
     if (!img.get()) {
         return false;
     }

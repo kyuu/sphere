@@ -1,9 +1,8 @@
-#include "system.hpp"
-
 #include <ctime>
 #include <cstdlib>
 #include <unistd.h>
 #include <sys/time.h>
+#include "../system.hpp"
 
 
 //-----------------------------------------------------------------
@@ -55,7 +54,7 @@ bool InitSystem(const Log& log)
 }
 
 //-----------------------------------------------------------------
-void DeinitSystem(const Log& log)
+void DeinitSystem()
 {
     // NO-OP
 }

@@ -1,8 +1,8 @@
 #ifndef ISOUNDEFFECT_HPP
 #define ISOUNDEFFECT_HPP
 
-#include "../common/refptr.hpp"
-#include "../common/irefcounted.hpp"
+#include "../common/IRefCounted.hpp"
+#include "../common/RefPtr.hpp"
 
 
 class ISoundEffect : public IRefCounted {
