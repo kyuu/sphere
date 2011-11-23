@@ -1,3 +1,4 @@
+#include <cassert>
 #include <vector>
 #include <string>
 #include <SDL.h>
@@ -18,8 +19,8 @@ struct SDLJOY {
 //-----------------------------------------------------------------
 // globals
 std::vector<SDLJOY> g_Joysticks;
-int g_NumKeys = 0;
 Uint8* g_KeyboardState = 0;
+int    g_KeyboardStateSize = 0;
 
 //-----------------------------------------------------------------
 static int key_to_sdl_scancode[NUM_KEYS] = {
@@ -650,79 +651,84 @@ static int sdl_scancode_to_key[512] = { // SDL_NUM_SCANCODES == 512
 //-----------------------------------------------------------------
 bool AreEventsPending()
 {
-    return SDL_PollEvent(0) == 1;
+    return (SDL_HasEvent(SDL_QUIT) ||
+            SDL_HasEvents(SDL_KEYDOWN, SDL_KEYUP) ||
+            SDL_HasEvents(SDL_MOUSEMOTION, SDL_MOUSEWHEEL) ||
+            SDL_HasEvents(SDL_JOYAXISMOTION, SDL_JOYBUTTONUP));
 }
 
 //-----------------------------------------------------------------
 bool GetEvent(Event& out)
 {
     SDL_Event sdl_event;
+
+fetch_event:
     if (SDL_PollEvent(&sdl_event) == 1) {
         switch (sdl_event.type) {
         case SDL_KEYDOWN:
-            out.type = Event::KEY_DOWN;
+            out.type = Event::ET_KEY_DOWN;
             out.key.key = sdl_scancode_to_key[sdl_event.key.keysym.scancode];
             break;
 
         case SDL_KEYUP:
-            out.type = Event::KEY_UP;
+            out.type = Event::ET_KEY_UP;
             out.key.key = sdl_scancode_to_key[sdl_event.key.keysym.scancode];
             break;
 
         case SDL_MOUSEBUTTONDOWN:
-            out.type = Event::MOUSE_BUTTON_DOWN;
+            out.type = Event::ET_MOUSE_BUTTON_DOWN;
             out.mbutton.button = sdl_event.button.button;
             break;
 
         case SDL_MOUSEBUTTONUP:
-            out.type = Event::MOUSE_BUTTON_UP;
+            out.type = Event::ET_MOUSE_BUTTON_UP;
             out.mbutton.button = sdl_event.button.button;
             break;
 
         case SDL_MOUSEMOTION:
-            out.type = Event::MOUSE_MOTION;
+            out.type = Event::ET_MOUSE_MOTION;
             out.mmotion.dx = sdl_event.motion.xrel;
             out.mmotion.dy = sdl_event.motion.yrel;
             break;
 
         case SDL_MOUSEWHEEL:
-            out.type = Event::MOUSE_WHEEL_MOTION;
+            out.type = Event::ET_MOUSE_WHEEL_MOTION;
             out.mwheel.dx = sdl_event.wheel.x;
             out.mwheel.dy = sdl_event.wheel.y;
             break;
 
         case SDL_JOYBUTTONDOWN:
-            out.type = Event::JOY_BUTTON_DOWN;
+            out.type = Event::ET_JOY_BUTTON_DOWN;
             out.jbutton.joy    = sdl_event.jbutton.which;
             out.jbutton.button = sdl_event.jbutton.button;
             break;
 
         case SDL_JOYBUTTONUP:
-            out.type = Event::JOY_BUTTON_UP;
+            out.type = Event::ET_JOY_BUTTON_UP;
             out.jbutton.joy    = sdl_event.jbutton.which;
             out.jbutton.button = sdl_event.jbutton.button;
             break;
 
         case SDL_JOYAXISMOTION:
-            out.type = Event::JOY_AXIS_MOTION;
+            out.type = Event::ET_JOY_AXIS_MOTION;
             out.jaxis.joy   = sdl_event.jaxis.which;
             out.jaxis.axis  = sdl_event.jaxis.axis;
             out.jaxis.value = sdl_event.jaxis.value;
             break;
 
         case SDL_JOYHATMOTION:
-            out.type = Event::JOY_HAT_MOTION;
+            out.type = Event::ET_JOY_HAT_MOTION;
             out.jhat.joy   = sdl_event.jhat.which;
             out.jhat.hat   = sdl_event.jhat.hat;
             out.jhat.state = sdl_event.jhat.value;
             break;
 
         case SDL_QUIT:
-            out.type = Event::APP_QUIT;
+            out.type = Event::ET_APP_QUIT;
             break;
 
         default:
-            return false; // ignore any other events
+            goto fetch_event; // ignore any other events
         }
         return true;
     }
@@ -862,7 +868,7 @@ bool HasJoystickForceFeedback(int joy)
 }
 
 //-----------------------------------------------------------------
-int UploadJoystickForceEffect(int joy, int direction, int duration, int startLevel, int endLevel)
+int UploadJoystickForceEffect(int joy, int duration, int startLevel, int endLevel)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
         SDL_HapticEffect effect;
@@ -870,16 +876,14 @@ int UploadJoystickForceEffect(int joy, int direction, int duration, int startLev
         if (startLevel == endLevel) {
             effect.constant.type             = SDL_HAPTIC_CONSTANT;
             effect.constant.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
-            effect.constant.level            = (Sint16)startLevel;
-            effect.constant.direction.type   = SDL_HAPTIC_POLAR;
-            effect.constant.direction.dir[0] = (Sint32)direction;
+            effect.constant.level            = (Sint16)(startLevel * 327);
+            effect.constant.direction.type   = SDL_HAPTIC_CARTESIAN;
         } else {
             effect.ramp.type             = SDL_HAPTIC_RAMP;
             effect.ramp.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
-            effect.ramp.start            = (Sint16)startLevel;
-            effect.ramp.end              = (Sint16)endLevel;
-            effect.ramp.direction.type   = SDL_HAPTIC_POLAR;
-            effect.ramp.direction.dir[0] = (Sint32)direction;
+            effect.ramp.start            = (Sint16)(startLevel * 327);
+            effect.ramp.end              = (Sint16)(endLevel * 327);
+            effect.ramp.direction.type   = SDL_HAPTIC_CARTESIAN;
         }
         int effect_id = SDL_HapticNewEffect(g_Joysticks[joy].haptic, &effect);
         if (effect_id >= 0) {
@@ -958,18 +962,29 @@ bool InitInput(const Log& log)
         }
     }
 
+    // get a pointer to SDL's keyboard state
+    g_KeyboardState = SDL_GetKeyboardState(&g_KeyboardStateSize);
+    assert(g_KeyboardState);
+    assert(g_KeyboardStateSize > 0);
+
     return true;
 }
 
 //-----------------------------------------------------------------
 void DeinitInput()
 {
+    g_KeyboardState = 0;
+    g_KeyboardStateSize = 0;
+
+    // close joysticks and their haptic devices
     for (size_t i = 0; i < g_Joysticks.size(); ++i) {
         if (g_Joysticks[i].haptic) {
             SDL_HapticClose(g_Joysticks[i].haptic);
         }
         SDL_JoystickClose(g_Joysticks[i].joystick);
     }
+
+    // quit subsystems
     SDL_QuitSubSystem(SDL_INIT_HAPTIC);
     SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }

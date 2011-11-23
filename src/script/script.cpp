@@ -38,6 +38,17 @@
 #define MARSHAL_MAGIC_CLOSURE      ((u32)0x5908b2f8)
 #define MARSHAL_MAGIC_INSTANCE     ((u32)0xd89bf8b4)
 
+//-----------------------------------------------------------------
+struct ScriptFuncReg {
+    const char* funcname;
+    const char* debugname;
+    SQRESULT (*funcptr)(HSQUIRRELVM);
+};
+
+struct ScriptConstReg {
+    const char* name;
+    SQInteger value;
+};
 
 //-----------------------------------------------------------------
 // globals
@@ -119,7 +130,7 @@ SQRESULT ThrowError(const char* format, ...)
     std::string source = "N/A";
     int line = -1;
     SQStackInfos si;
-    if (SQ_SUCCEEDED(sq_stackinfos(g_VM, 1, &si))) {
+    if (SQ_SUCCEEDED(sq_stackinfos(g_VM, 0, &si))) {
         funcname = si.funcname;
         for (int i = 1; SQ_SUCCEEDED(sq_stackinfos(g_VM, i, &si)); i++) {
             if (si.line != -1) {
@@ -383,6 +394,72 @@ Recti* GetRect(SQInteger idx)
         return (Recti*)p;
     }
     return 0;
+}
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_rect_methods[] = {
+    {"constructor",     "Rect.constructor",         script_rect_constructor     },
+    {"isValid",         "Rect.isValid",             script_rect_isValid         },
+    {"intersects",      "Rect.intersects",          script_rect_intersects      },
+    {"getIntersection", "Rect.getIntersection",     script_rect_getIntersection },
+    {"containsPoint",   "Rect.containsPoint",       script_rect_containsPoint   },
+    {"containsRect",    "Rect.containsRect",        script_rect_containsRect    },
+    {"_get",            "Rect._get",                script_rect__get            },
+    {"_set",            "Rect._set",                script_rect__set            },
+    {"_typeof",         "Rect._typeof",             script_rect__typeof         },
+    {"_cloned",         "Rect._cloned",             script_rect__cloned         },
+    {"_tostring",       "Rect._tostring",           script_rect__tostring       },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_rect_static_methods[] = {
+    {"_dump",           "Rect._dump",               script_rect__dump           },
+    {"_load",           "Rect._load",               script_rect__load           },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_rect_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_rect_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_RECT);
+    sq_setclassudsize(g_VM, -1, sizeof(Recti));
+
+    // define methods
+    for (int i = 0; script_rect_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_rect_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_rect_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_rect_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_rect_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_rect_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_rect_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_rect_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_rect_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_rect_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_rect_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_RectClass);
+    sq_getstackobj(g_VM, -1, &g_RectClass);
+    sq_addref(g_VM, &g_RectClass);
+
+    sq_poptop(g_VM); // pop class
 }
 
 /***************************** VEC2 *******************************/
@@ -731,6 +808,128 @@ Vec2i* GetVec2(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_vec2_methods[] = {
+    {"constructor",     "Vec2.constructor",     script_vec2_constructor     },
+    {"getLength",       "Vec2.getLength",       script_vec2_getLength       },
+    {"getDotProduct",   "Vec2.getDotProduct",   script_vec2_getDotProduct   },
+    {"setNull",         "Vec2.setNull",         script_vec2_setNull         },
+    {"normalize",       "Vec2.normalize",       script_vec2_normalize       },
+    {"getDistanceFrom", "Vec2.getDistanceFrom", script_vec2_getDistanceFrom },
+    {"rotateBy",        "Vec2.rotateBy",        script_vec2_rotateBy        },
+    {"getAngle",        "Vec2.getAngle",        script_vec2_getAngle        },
+    {"getAngleWith",    "Vec2.getAngleWith",    script_vec2_getAngleWith    },
+    {"isBetween",       "Vec2.isBetween",       script_vec2_isBetween       },
+    {"getInterpolated", "Vec2.getInterpolated", script_vec2_getInterpolated },
+    {"interpolate",     "Vec2.interpolate",     script_vec2_interpolate     },
+    {"add",             "Vec2.add",             script_vec2_add             },
+    {"subtract",        "Vec2.subtract",        script_vec2_subtract        },
+    {"multiply",        "Vec2.multiply",        script_vec2_multiply        },
+    {"_add",            "Vec2._add",            script_vec2__add            },
+    {"_sub",            "Vec2._sub",            script_vec2__sub            },
+    {"_mul",            "Vec2._mul",            script_vec2__mul            },
+    {"_get",            "Vec2._get",            script_vec2__get            },
+    {"_set",            "Vec2._set",            script_vec2__set            },
+    {"_typeof",         "Vec2._typeof",         script_vec2__typeof         },
+    {"_cloned",         "Vec2._cloned",         script_vec2__cloned         },
+    {"_tostring",       "Vec2._tostring",       script_vec2__tostring       },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_vec2_static_methods[] = {
+    {"_dump",           "Vec2._dump",           script_vec2__dump           },
+    {"_load",           "Vec2._load",           script_vec2__load           },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_vec2_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_vec2_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_VEC2);
+    sq_setclassudsize(g_VM, -1, sizeof(Vec2i));
+
+    // define methods
+    for (int i = 0; script_vec2_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_vec2_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_vec2_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_vec2_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_vec2_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_vec2_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_vec2_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_vec2_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_vec2_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_vec2_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_vec2_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_Vec2Class);
+    sq_getstackobj(g_VM, -1, &g_Vec2Class);
+    sq_addref(g_VM, &g_Vec2Class);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_core_functions[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_core_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_core_api()
+{
+    // init classes
+    init_rect_class();
+    init_vec2_class();
+
+    // register classes
+    sq_pushstring(g_VM, "Rect", -1);
+    sq_pushobject(g_VM, g_RectClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    sq_pushstring(g_VM, "Vec2", -1);
+    sq_pushobject(g_VM, g_Vec2Class);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_core_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_core_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_core_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_core_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_core_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_core_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_core_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                               IO                               *
@@ -931,7 +1130,7 @@ static SQInteger script_stream_readNumber(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 // Stream.readString(length)
-static SQInteger script_stream_reads(HSQUIRRELVM v)
+static SQInteger script_stream_readString(HSQUIRRELVM v)
 {
     SETUP_STREAM_OBJECT()
     CHECK_NARGS(1)
@@ -1059,6 +1258,74 @@ IStream* GetStream(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_stream_methods[] = {
+    {"isOpen",      "Stream.isOpen",        script_stream_isOpen        },
+    {"isReadable",  "Stream.isReadable",    script_stream_isReadable    },
+    {"isWriteable", "Stream.isWriteable",   script_stream_isWriteable   },
+    {"close",       "Stream.close",         script_stream_close         },
+    {"tell",        "Stream.tell",          script_stream_tell          },
+    {"seek",        "Stream.seek",          script_stream_seek          },
+    {"read",        "Stream.read",          script_stream_read          },
+    {"write",       "Stream.write",         script_stream_write         },
+    {"flush",       "Stream.flush",         script_stream_flush         },
+    {"eof",         "Stream.eof",           script_stream_eof           },
+    {"readNumber",  "Stream.readNumber",    script_stream_readNumber    },
+    {"readString",  "Stream.readString",    script_stream_readString    },
+    {"writeNumber", "Stream.writeNumber",   script_stream_writeNumber   },
+    {"writeString", "Stream.writeString",   script_stream_writeString   },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_stream_static_methods[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_stream_constants[] = {
+    {"BEG",     IStream::BEG    },
+    {"CUR",     IStream::CUR    },
+    {"END",     IStream::END    },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_stream_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_STREAM);
+
+    // define methods
+    for (int i = 0; script_stream_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_stream_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_stream_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_stream_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_stream_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_stream_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_stream_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_stream_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_stream_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_stream_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_stream_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_StreamClass);
+    sq_getstackobj(g_VM, -1, &g_StreamClass);
+    sq_addref(g_VM, &g_StreamClass);
+
+    sq_poptop(g_VM); // pop class
+}
 
 /***************************** BLOB *******************************/
 
@@ -1223,6 +1490,41 @@ static SQInteger script_blob_concat(HSQUIRRELVM v)
     GET_ARG_BLOB(1, blob)
     BlobPtr result = This->concat(blob->getBuffer(), blob->getSize());
     RET_BLOB(result.get())
+}
+
+//-----------------------------------------------------------------
+// Blob.swap2()
+static SQInteger script_blob_swap2(HSQUIRRELVM v)
+{
+    SETUP_BLOB_OBJECT()
+    This->swap2();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Blob.swap4()
+static SQInteger script_blob_swap4(HSQUIRRELVM v)
+{
+    SETUP_BLOB_OBJECT()
+    This->swap4();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Blob.swap8()
+static SQInteger script_blob_swap8(HSQUIRRELVM v)
+{
+    SETUP_BLOB_OBJECT()
+    This->swap8();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Blob.toString()
+static SQInteger script_blob_toString(HSQUIRRELVM v)
+{
+    SETUP_BLOB_OBJECT()
+    RET_STRING_N((const SQChar*)This->getBuffer(), This->getSize())
 }
 
 //-----------------------------------------------------------------
@@ -1439,61 +1741,134 @@ Blob* GetBlob(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_blob_methods[] = {
+    {"constructor",     "Blob.constructor",     script_blob_constructor     },
+    {"getSize",         "Blob.getSize",         script_blob_getSize         },
+    {"getCapacity",     "Blob.getCapacity",     script_blob_getCapacity     },
+    {"clear",           "Blob.clear",           script_blob_clear           },
+    {"reset",           "Blob.reset",           script_blob_reset           },
+    {"resize",          "Blob.resize",          script_blob_resize          },
+    {"bloat",           "Blob.bloat",           script_blob_bloat           },
+    {"reserve",         "Blob.reserve",         script_blob_reserve         },
+    {"doubleCapacity",  "Blob.doubleCapacity",  script_blob_doubleCapacity  },
+    {"assign",          "Blob.assign",          script_blob_assign          },
+    {"append",          "Blob.append",          script_blob_append          },
+    {"concat",          "Blob.concat",          script_blob_concat          },
+    {"swap2",           "Blob.swap2",           script_blob_swap2           },
+    {"swap4",           "Blob.swap4",           script_blob_swap4           },
+    {"swap8",           "Blob.swap8",           script_blob_swap8           },
+    {"toString",        "Blob.toString",        script_blob_toString        },
+    {"_add",            "Blob._add",            script_blob__add            },
+    {"_get",            "Blob._get",            script_blob__get            },
+    {"_set",            "Blob._set",            script_blob__set            },
+    {"_typeof",         "Blob._typeof",         script_blob__typeof         },
+    {"_tostring",       "Blob._tostring",       script_blob__tostring       },
+    {"_nexti",          "Blob._nexti",          script_blob__nexti          },
+    {"_cloned",         "Blob._cloned",         script_blob__cloned         },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_blob_static_methods[] = {
+    {"FromString",      "Blob.FromString",      script_blob_FromString      },
+    {"_dump",           "Blob._dump",           script_blob__dump           },
+    {"_load",           "Blob._load",           script_blob__load           },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_blob_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_blob_class()
+{
+    CreateStreamDerivedClass(); // inherit from Stream
+    sq_newclass(g_VM, SQTrue); // create class
+    sq_settypetag(g_VM, -1, TT_BLOB);
+
+    // define methods
+    for (int i = 0; script_blob_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_blob_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_blob_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_blob_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_blob_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_blob_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_blob_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_blob_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_blob_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_blob_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_blob_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_BlobClass);
+    sq_getstackobj(g_VM, -1, &g_BlobClass);
+    sq_addref(g_VM, &g_BlobClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_io_functions[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_io_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_io_api()
+{
+    // init classes
+    init_stream_class(); // Stream must be initialized before any class that inherits from it
+    init_blob_class();
+
+    // register classes
+    sq_pushstring(g_VM, "Stream", -1);
+    sq_pushobject(g_VM, g_StreamClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    sq_pushstring(g_VM, "Blob", -1);
+    sq_pushobject(g_VM, g_BlobClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_io_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_io_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_io_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_io_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_io_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_io_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_io_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                           GRAPHICS                             *
  *                                                                *
  ******************************************************************/
-
-/***************************** COLOR ******************************/
-
-//-----------------------------------------------------------------
-// Color(red, green, blue [, alpha = 255])
-static SQInteger script_color_constructor(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(3)
-    GET_ARG_INT(1, red)
-    GET_ARG_INT(2, green)
-    GET_ARG_INT(3, blue)
-    GET_OPTARG_INT(4, alpha, 255)
-    RET_INT(RGBA::Pack(red, green, blue, alpha))
-}
-
-//-----------------------------------------------------------------
-// Color.Red(color)
-static SQInteger script_color_Red(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).red)
-}
-
-//-----------------------------------------------------------------
-// Color.Green(color)
-static SQInteger script_color_Green(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).green)
-}
-
-//-----------------------------------------------------------------
-// Color.Blue(color)
-static SQInteger script_color_Blue(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).blue)
-}
-
-//-----------------------------------------------------------------
-// Color.Alpha(color)
-static SQInteger script_color_Alpha(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).alpha)
-}
 
 /**************************** CANVAS *****************************/
 
@@ -1661,6 +2036,34 @@ static SQInteger script_canvas_setPixel(HSQUIRRELVM v)
         THROW_ERROR("Invalid y")
     }
     This->setPixel(x, y, RGBA::Unpack((u32)color));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Canvas.getPixelByIndex(index)
+static SQInteger script_canvas_getPixelByIndex(HSQUIRRELVM v)
+{
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, index)
+    if (index < 0 || index >= This->getNumPixels()) {
+        THROW_ERROR("Invalid index")
+    }
+    RET_INT(RGBA::Pack(This->getPixelByIndex(index)))
+}
+
+//-----------------------------------------------------------------
+// Canvas.setPixelByIndex(index, color)
+static SQInteger script_canvas_setPixelByIndex(HSQUIRRELVM v)
+{
+    SETUP_CANVAS_OBJECT()
+    CHECK_NARGS(2)
+    GET_ARG_INT(1, index)
+    GET_ARG_INT(2, color)
+    if (index < 0 || index >= This->getNumPixels()) {
+        THROW_ERROR("Invalid index")
+    }
+    This->setPixelByIndex(index, RGBA::Unpack((u32)color));
     RET_VOID()
 }
 
@@ -1886,127 +2289,182 @@ Canvas* GetCanvas(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_canvas_methods[] = {
+    {"constructor",         "Canvas.constructor",       script_canvas_constructor       },
+    {"save",                "Canvas.save",              script_canvas_save              },
+    {"saveToStream",        "Canvas.saveToStream",      script_canvas_saveToStream      },
+    {"getPixels",           "Canvas.getPixels",         script_canvas_getPixels         },
+    {"cloneSection",        "Canvas.cloneSection",      script_canvas_cloneSection      },
+    {"getPixel",            "Canvas.getPixel",          script_canvas_getPixel          },
+    {"setPixel",            "Canvas.setPixel",          script_canvas_setPixel          },
+    {"getPixelByIndex",     "Canvas.getPixelByIndex",   script_canvas_getPixelByIndex   },
+    {"setPixelByIndex",     "Canvas.setPixelByIndex",   script_canvas_setPixelByIndex   },
+    {"resize",              "Canvas.resize",            script_canvas_resize            },
+    {"fill",                "Canvas.fill",              script_canvas_fill              },
+    {"_get",                "Canvas._get",              script_canvas__get              },
+    {"_set",                "Canvas._set",              script_canvas__set              },
+    {"_typeof",             "Canvas._typeof",           script_canvas__typeof           },
+    {"_tostring",           "Canvas._tostring",         script_canvas__tostring         },
+    {"_nexti",              "Canvas._nexti",            script_canvas__nexti            },
+    {"_cloned",             "Canvas._cloned",           script_canvas__cloned           },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_canvas_static_methods[] = {
+    {"Load",                "Canvas.Load",              script_canvas_Load              },
+    {"LoadFromStream",      "Canvas.LoadFromStream",    script_canvas_LoadFromStream    },
+    {"_dump",               "Canvas._dump",             script_canvas__dump             },
+    {"_load",               "Canvas._load",             script_canvas__load             },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_canvas_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_canvas_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_CANVAS);
+
+    // define methods
+    for (int i = 0; script_canvas_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_canvas_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_canvas_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_canvas_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_canvas_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_canvas_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_canvas_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_canvas_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_canvas_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_canvas_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_canvas_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_CanvasClass);
+    sq_getstackobj(g_VM, -1, &g_CanvasClass);
+    sq_addref(g_VM, &g_CanvasClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+// CreateColor(red, green, blue [, alpha = 255])
+static SQInteger script_CreateColor(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(3)
+    GET_ARG_INT(1, red)
+    GET_ARG_INT(2, green)
+    GET_ARG_INT(3, blue)
+    GET_OPTARG_INT(4, alpha, 255)
+    RET_INT(RGBA::Pack(red, green, blue, alpha))
+}
+
+//-----------------------------------------------------------------
+// UnpackRed(color)
+static SQInteger script_UnpackRed(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).red)
+}
+
+//-----------------------------------------------------------------
+// UnpackGreen(color)
+static SQInteger script_UnpackGreen(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).green)
+}
+
+//-----------------------------------------------------------------
+// UnpackBlue(color)
+static SQInteger script_UnpackBlue(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).blue)
+}
+
+//-----------------------------------------------------------------
+// UnpackAlpha(color)
+static SQInteger script_UnpackAlpha(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).alpha)
+}
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_graphics_functions[] = {
+    {"CreateColor", "CreateColor",  script_CreateColor  },
+    {"UnpackRed",   "UnpackRed",    script_UnpackRed    },
+    {"UnpackGreen", "UnpackGreen",  script_UnpackGreen  },
+    {"UnpackBlue",  "UnpackBlue",   script_UnpackBlue   },
+    {"UnpackAlpha", "UnpackAlpha",  script_UnpackAlpha  },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_graphics_constants[] = {
+    {"BLACK",   RGBA::Pack(  0,   0,   0) },
+    {"WHITE",   RGBA::Pack(255, 255, 255) },
+    {"RED",     RGBA::Pack(255,   0,   0) },
+    {"GREEN",   RGBA::Pack(0,   255,   0) },
+    {"BLUE",    RGBA::Pack(0,     0, 255) },
+    {"YELLOW",  RGBA::Pack(255, 255,   0) },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_graphics_api()
+{
+    // init classes
+    init_canvas_class();
+
+    // register classes
+    sq_pushstring(g_VM, "Canvas", -1);
+    sq_pushobject(g_VM, g_CanvasClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_graphics_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_graphics_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_graphics_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_graphics_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_graphics_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_graphics_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_graphics_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                          FILESYSTEM                            *
  *                                                                *
  ******************************************************************/
-
-/*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// OpenFile(filename [, mode = File.IN])
-static SQInteger script_OpenFile(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    GET_OPTARG_INT(2, mode, IFile::IN)
-    if (mode != IFile::IN  &&
-        mode != IFile::OUT &&
-        mode != IFile::APPEND)
-    {
-        THROW_ERROR("Invalid mode")
-    }
-    FilePtr file = OpenFile(filename, mode);
-    if (!file) {
-        THROW_ERROR("Could not open file")
-    }
-    RET_FILE(file.get())
-}
-
-//-----------------------------------------------------------------
-// DoesFileExist(filename)
-static SQInteger script_Exists(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(DoesFileExist(filename))
-}
-
-//-----------------------------------------------------------------
-// IsRegularFile(filename)
-static SQInteger script_IsRegularFile(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(IsRegularFile(filename))
-}
-
-//-----------------------------------------------------------------
-// IsDirectory(filename)
-static SQInteger script_IsDirectory(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(IsDirectory(filename))
-}
-
-//-----------------------------------------------------------------
-// GetFileModTime(filename)
-static SQInteger script_GetLastWriteTime(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_INT(GetFileModTime(filename))
-}
-
-//-----------------------------------------------------------------
-// CreateDirectory(directory)
-static SQInteger script_CreateDirectory(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, directory)
-    if (!CreateDirectory(directory)) {
-        THROW_ERROR("Could not create directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// RemoveFile(filename)
-static SQInteger script_Remove(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    if (!RemoveFile(filename)) {
-        THROW_ERROR("Could not remove file or directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// RenameFile(filenameFrom, filenameTo)
-static SQInteger script_Rename(HSQUIRRELVM v)
-{
-    CHECK_NARGS(2)
-    GET_ARG_STRING(1, filenameFrom)
-    GET_ARG_STRING(2, filenameTo)
-    if (!RenameFile(filenameFrom, filenameTo)) {
-        THROW_ERROR("Could not rename file or directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// GetFileList(directory)
-static SQInteger script_GetFileList(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, directory)
-    std::vector<std::string> file_list;
-    if (!GetFileList(directory, file_list)) {
-        THROW_ERROR("Could not get file list")
-    }
-    sq_newarray(v, file_list.size());
-    if (file_list.size() > 0) {
-        for (int i = 0; i < (int)file_list.size(); ++i) {
-            sq_pushinteger(v, i);
-            sq_pushstring(v, file_list[i].c_str(), -1);
-            sq_rawset(v, -3);
-        }
-    }
-    return 1;
-}
 
 /***************************** FILE *******************************/
 
@@ -2088,35 +2546,175 @@ IFile* GetFile(SQInteger idx)
     return 0;
 }
 
-/******************************************************************
- *                                                                *
- *                             VIDEO                              *
- *                                                                *
- ******************************************************************/
+//-----------------------------------------------------------------
+static ScriptFuncReg script_file_methods[] = {
+    {"getName",     "File.getName",     script_file_getName     },
+    {"_typeof",     "File._typeof",     script_file__typeof     },
+    {"_tostring",   "File._tostring",   script_file__tostring   },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_file_static_methods[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_file_constants[] = {
+    {"IN",      IFile::IN       },
+    {"OUT",     IFile::OUT      },
+    {"APPEND",  IFile::APPEND   },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_file_class()
+{
+    CreateStreamDerivedClass(); // inherit from Stream
+    sq_newclass(g_VM, SQTrue); // create class
+    sq_settypetag(g_VM, -1, TT_FILE);
+
+    // define methods
+    for (int i = 0; script_file_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_file_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_file_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_file_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_file_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_file_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_file_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_file_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_file_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_file_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_file_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_FileClass);
+    sq_getstackobj(g_VM, -1, &g_FileClass);
+    sq_addref(g_VM, &g_FileClass);
+
+    sq_poptop(g_VM); // pop class
+}
 
 /*********************** GLOBAL FUNCTIONS *************************/
 
 //-----------------------------------------------------------------
-// GetSupportedVideoModes()
-static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
+// OpenFile(filename [, mode = File.IN])
+static SQInteger script_OpenFile(HSQUIRRELVM v)
 {
-    std::vector<Dim2i> video_modes;
-    GetSupportedVideoModes(video_modes);
-    sq_newarray(v, video_modes.size());
-    if (video_modes.size() > 0) {
-        for (int i = 0; i < (int)video_modes.size(); ++i) {
-            sq_pushinteger(v, i); // key
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    GET_OPTARG_INT(2, mode, IFile::IN)
+    if (mode != IFile::IN  &&
+        mode != IFile::OUT &&
+        mode != IFile::APPEND)
+    {
+        THROW_ERROR("Invalid mode")
+    }
+    FilePtr file = OpenFile(filename, mode);
+    if (!file) {
+        THROW_ERROR("Could not open file")
+    }
+    RET_FILE(file.get())
+}
 
-            sq_newtable(v); // value
+//-----------------------------------------------------------------
+// DoesFileExist(filename)
+static SQInteger script_DoesFileExist(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(DoesFileExist(filename))
+}
 
-            sq_pushstring(v, "width", -1);
-            sq_pushinteger(v, video_modes[i].width);
-            sq_newslot(v, -3, SQFalse);
+//-----------------------------------------------------------------
+// IsRegularFile(filename)
+static SQInteger script_IsRegularFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsRegularFile(filename))
+}
 
-            sq_pushstring(v, "height", -1);
-            sq_pushinteger(v, video_modes[i].height);
-            sq_newslot(v, -3, SQFalse);
+//-----------------------------------------------------------------
+// IsDirectory(filename)
+static SQInteger script_IsDirectory(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsDirectory(filename))
+}
 
+//-----------------------------------------------------------------
+// GetFileModTime(filename)
+static SQInteger script_GetFileModTime(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_INT(GetFileModTime(filename))
+}
+
+//-----------------------------------------------------------------
+// CreateDirectory(directory)
+static SQInteger script_CreateDirectory(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
+    if (!CreateDirectory(directory)) {
+        THROW_ERROR("Could not create directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// RemoveFile(filename)
+static SQInteger script_RemoveFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    if (!RemoveFile(filename)) {
+        THROW_ERROR("Could not remove file or directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// RenameFile(filenameFrom, filenameTo)
+static SQInteger script_RenameFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, filenameFrom)
+    GET_ARG_STRING(2, filenameTo)
+    if (!RenameFile(filenameFrom, filenameTo)) {
+        THROW_ERROR("Could not rename file or directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// GetFileList(directory)
+static SQInteger script_GetFileList(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
+    std::vector<std::string> file_list;
+    if (!GetFileList(directory, file_list)) {
+        THROW_ERROR("Could not get file list")
+    }
+    sq_newarray(v, file_list.size());
+    if (file_list.size() > 0) {
+        for (int i = 0; i < (int)file_list.size(); ++i) {
+            sq_pushinteger(v, i);
+            sq_pushstring(v, file_list[i].c_str(), -1);
             sq_rawset(v, -3);
         }
     }
@@ -2124,388 +2722,56 @@ static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// OpenWindow(width, height, fullscreen)
-static SQInteger script_OpenWindow(HSQUIRRELVM v)
-{
-    CHECK_NARGS(3)
-    GET_ARG_INT(1, width)
-    GET_ARG_INT(2, height)
-    GET_ARG_BOOL(3, fullscreen)
-    if (width <= 0) {
-        THROW_ERROR("Invalid width")
-    }
-    if (height <= 0) {
-        THROW_ERROR("Invalid height")
-    }
-    if (!OpenWindow(width, height, (fullscreen == SQTrue ? true : false))) {
-
-    }
-    RET_VOID()
-}
+static ScriptFuncReg script_filesystem_functions[] = {
+    {"OpenFile",        "OpenFile",         script_OpenFile         },
+    {"DoesFileExist",   "DoesFileExist",    script_DoesFileExist    },
+    {"IsRegularFile",   "IsRegularFile",    script_IsRegularFile    },
+    {"IsDirectory",     "IsDirectory",      script_IsDirectory      },
+    {"GetFileModTime",  "GetFileModTime",   script_GetFileModTime   },
+    {"CreateDirectory", "CreateDirectory",  script_CreateDirectory  },
+    {"RemoveFile",      "RemoveFile",       script_RemoveFile       },
+    {"RenameFile",      "RenameFile",       script_RenameFile       },
+    {"GetFileList",     "GetFileList",      script_GetFileList      },
+    {0,0}
+};
 
 //-----------------------------------------------------------------
-// IsWindowOpen()
-static SQInteger script_IsWindowOpen(HSQUIRRELVM v)
-{
-    RET_BOOL(IsWindowOpen())
-}
+static ScriptConstReg script_filesystem_constants[] = {
+    {0,0}
+};
 
 //-----------------------------------------------------------------
-// GetWindowWidth()
-static SQInteger script_GetWindowWidth(HSQUIRRELVM v)
+static void register_filesystem_api()
 {
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
+    // init classes
+    init_file_class();
+
+    // register classes
+    sq_pushstring(g_VM, "File", -1);
+    sq_pushobject(g_VM, g_FileClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_filesystem_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_filesystem_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_filesystem_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_filesystem_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
     }
-    RET_INT(GetWindowWidth())
+
+    // register constants
+    for (int i = 0; script_filesystem_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_filesystem_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_filesystem_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
 }
 
-//-----------------------------------------------------------------
-// GetWindowHeight()
-static SQInteger script_GetWindowHeight(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    RET_INT(GetWindowHeight())
-}
-
-//-----------------------------------------------------------------
-// IsWindowFullscreen()
-static SQInteger script_IsWindowFullscreen(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    RET_BOOL(IsWindowFullscreen())
-}
-
-//-----------------------------------------------------------------
-// SetWindowFullscreen(fullscreen)
-static SQInteger script_SetWindowFullscreen(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(1)
-    GET_ARG_BOOL(1, fullscreen)
-    SetWindowFullscreen((fullscreen == SQTrue ? true : false));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// GetWindowTitle()
-static SQInteger script_GetWindowTitle(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    RET_STRING(GetWindowTitle())
-}
-
-//-----------------------------------------------------------------
-// SetWindowTitle(title)
-static SQInteger script_SetWindowTitle(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, title)
-    SetWindowTitle(title);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// SetWindowIcon(icon)
-static SQInteger script_SetWindowIcon(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(1)
-    GET_ARG_CANVAS(1, icon)
-    SetWindowIcon(icon);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// SwapFrameBuffers()
-static SQInteger script_SwapWindowBuffers(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    SwapFrameBuffers();
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// GetFrameBufferClipRect()
-static SQInteger script_GetClipRect(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    Recti clip_rect;
-    if (!GetFrameBufferClipRect(clip_rect)) {
-        THROW_ERROR("Could not get frame buffer clipping rectangle")
-    }
-    RET_RECT(clip_rect)
-}
-
-//-----------------------------------------------------------------
-// SetFrameBufferClipRect(clip_rect)
-static SQInteger script_SetClipRect(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(1)
-    GET_ARG_RECT(1, clip_rect)
-    SetFrameBufferClipRect(*clip_rect);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// CloneFrameBufferSection(section)
-static SQInteger script_CloneFrameBuffer(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(1)
-    GET_ARG_RECT(1, section)
-    TexturePtr texture = CloneFrameBufferSection(*section);
-    if (!texture) {
-        THROW_ERROR("Could not clone frame buffer section")
-    }
-    RET_TEXTURE(texture.get())
-}
-
-//-----------------------------------------------------------------
-// DrawPoint(x, y, color)
-static SQInteger script_DrawPoint(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_NARGS(3)
-    GET_ARG_INT(1, x)
-    GET_ARG_INT(2, y)
-    GET_ARG_INT(3, color)
-    DrawPoint(Vec2i(x, y), RGBA::Unpack((u32)color));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawLine(x1, y1, x2, y2, col1 [, col2])
-static SQInteger script_DrawLine(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(3)
-    GET_ARG_INT(1, x1);
-    GET_ARG_INT(2, y1);
-    GET_ARG_INT(3, x2);
-    GET_ARG_INT(4, y2);
-    GET_ARG_INT(5, col1)
-    GET_OPTARG_INT(6, col2, col1)
-    Vec2i positions[2] = {
-        Vec2i(x1, y1),
-        Vec2i(x2, y2),
-    };
-    RGBA colors[2] = {
-        RGBA::Unpack((u32)col1),
-        RGBA::Unpack((u32)col2),
-    };
-    DrawLine(positions, colors);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawTriangle(x1, y1, x2, y2, x3, y3, col1 [, col2, col3])
-static SQInteger script_DrawTriangle(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(7)
-    GET_ARG_INT(1, x1)
-    GET_ARG_INT(2, y1)
-    GET_ARG_INT(3, x2)
-    GET_ARG_INT(4, y2)
-    GET_ARG_INT(5, x3)
-    GET_ARG_INT(6, y3)
-    GET_ARG_INT(7, col1)
-    GET_OPTARG_INT(8, col2, col1)
-    GET_OPTARG_INT(9, col3, col1)
-    Vec2i positions[3] = {
-        Vec2i(x1, y1),
-        Vec2i(x2, y2),
-        Vec2i(x3, y3),
-    };
-    RGBA colors[3] = {
-        RGBA::Unpack((u32)col1),
-        RGBA::Unpack((u32)col2),
-        RGBA::Unpack((u32)col3),
-    };
-    DrawTriangle(positions, colors);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawTexturedTriangle(tex, tx1, ty1, tx2, ty2, tx3, ty3, x1, y1, x2, y2, x3, y3 [, mask = Color.New(255, 255, 255)])
-static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(13)
-    GET_ARG_TEXTURE(1, tex)
-    GET_ARG_INT(2, tx1)
-    GET_ARG_INT(3, ty1)
-    GET_ARG_INT(4, tx2)
-    GET_ARG_INT(5, ty2)
-    GET_ARG_INT(6, tx3)
-    GET_ARG_INT(7, ty3)
-    GET_ARG_INT(8, x1)
-    GET_ARG_INT(9, y1)
-    GET_ARG_INT(10, x2)
-    GET_ARG_INT(11, y2)
-    GET_ARG_INT(12, x3)
-    GET_ARG_INT(13, y3)
-    GET_OPTARG_INT(14, mask, RGBA::Pack(255, 255, 255))
-    Vec2i texcoords[3] = {
-        Vec2i(tx1, ty1),
-        Vec2i(tx2, ty2),
-        Vec2i(tx3, ty3),
-    };
-    Vec2i positions[3] = {
-        Vec2i(x1, y1),
-        Vec2i(x2, y2),
-        Vec2i(x3, y3),
-    };
-    DrawTexturedTriangle(tex, texcoords, positions, RGBA::Unpack((u32)mask));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawRect(x, y, width, height, col [, col2, col3, col4])
-static SQInteger script_DrawRect(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(5)
-    GET_ARG_INT(1, x)
-    GET_ARG_INT(2, y)
-    GET_ARG_INT(3, width)
-    GET_ARG_INT(4, height)
-    GET_ARG_INT(5, col1)
-    GET_OPTARG_INT(6, col2, col1)
-    GET_OPTARG_INT(7, col3, col1)
-    GET_OPTARG_INT(8, col4, col1)
-    RGBA colors[4] = {
-        RGBA::Unpack((u32)col1),
-        RGBA::Unpack((u32)col2),
-        RGBA::Unpack((u32)col3),
-        RGBA::Unpack((u32)col4),
-    };
-    DrawRect(Vec2i(x, y), width, height, colors);
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawImage(image, pos [, mask = Color.New(255, 255, 255)])
-static SQInteger script_DrawImage(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(3)
-    GET_ARG_TEXTURE(1, image)
-    GET_ARG_INT(2, x)
-    GET_ARG_INT(3, y)
-    GET_OPTARG_INT(4, mask, RGBA::Pack(255, 255, 255))
-    DrawImage(image, Vec2i(x, y), RGBA::Unpack((u32)mask));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawSubImage(image, src_rect, x, y [, mask = Color.New(255, 255, 255)])
-static SQInteger script_DrawSubImage(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(4)
-    GET_ARG_TEXTURE(1, image)
-    GET_ARG_RECT(2, src_rect)
-    GET_ARG_INT(3, x)
-    GET_ARG_INT(4, y)
-    GET_OPTARG_INT(5, mask, RGBA::Pack(255, 255, 255))
-    DrawSubImage(image, *src_rect, Vec2i(x, y), RGBA::Unpack((u32)mask));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawImageQuad(image, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = Color.New(255, 255, 255)])
-static SQInteger script_DrawImageQuad(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(9)
-    GET_ARG_TEXTURE(1, image)
-    GET_ARG_INT(2, x1)
-    GET_ARG_INT(3, y1)
-    GET_ARG_INT(4, x2)
-    GET_ARG_INT(5, y2)
-    GET_ARG_INT(6, x3)
-    GET_ARG_INT(7, y3)
-    GET_ARG_INT(8, x4)
-    GET_ARG_INT(9, y4)
-    GET_OPTARG_INT(10, mask, RGBA::Pack(255, 255, 255))
-    Vec2i positions[4] = {
-        Vec2i(x1, y1),
-        Vec2i(x2, y2),
-        Vec2i(x3, y3),
-        Vec2i(x4, y4),
-    };
-    DrawImageQuad(image, positions, RGBA::Unpack((u32)mask));
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// DrawSubImageQuad(image, src_rect, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = Color.New(255, 255, 255)])
-static SQInteger script_DrawSubImageQuad(HSQUIRRELVM v)
-{
-    if (!IsWindowOpen()) {
-        THROW_ERROR("Invalid video state")
-    }
-    CHECK_MIN_NARGS(10)
-    GET_ARG_TEXTURE(1, image)
-    GET_ARG_RECT(2, src_rect)
-    GET_ARG_INT(3, x1)
-    GET_ARG_INT(4, y1)
-    GET_ARG_INT(5, x2)
-    GET_ARG_INT(6, y2)
-    GET_ARG_INT(7, x3)
-    GET_ARG_INT(8, y3)
-    GET_ARG_INT(9, x4)
-    GET_ARG_INT(10, y4)
-    GET_OPTARG_INT(11, mask, RGBA::Pack(255, 255, 255))
-    Vec2i positions[4] = {
-        Vec2i(x1, y1),
-        Vec2i(x2, y2),
-        Vec2i(x3, y3),
-        Vec2i(x4, y4),
-    };
-    DrawSubImageQuad(image, *src_rect, positions, RGBA::Unpack((u32)mask));
-    RET_VOID()
-}
+/******************************************************************
+ *                                                                *
+ *                             VIDEO                              *
+ *                                                                *
+ ******************************************************************/
 
 /**************************** TEXTURE *****************************/
 
@@ -2532,12 +2798,14 @@ static SQInteger script_texture_constructor(HSQUIRRELVM v)
         THROW_ERROR("Invalid video state")
     }
     CHECK_NARGS(1)
-    GET_ARG_CANVAS(1, image)
-    TexturePtr texture = CreateTexture(image);
-    if (!texture) {
+    GET_ARG_CANVAS(1, canvas)
+    This = CreateTexture(canvas);
+    if (!This) {
         THROW_ERROR("Could not create texture")
     }
-    RET_TEXTURE(texture.get())
+    sq_setinstanceup(v, 1, (SQUserPointer)This);
+    sq_setreleasehook(v, 1, script_texture_destructor);
+    RET_VOID()
 }
 
 //-----------------------------------------------------------------
@@ -2718,6 +2986,549 @@ ITexture* GetTexture(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_texture_methods[] = {
+    {"constructor",     "Texture.constructor",  script_texture_constructor  },
+    {"updatePixels",    "Texture.updatePixels", script_texture_updatePixels },
+    {"createCanvas",    "Texture.createCanvas", script_texture_createCanvas },
+    {"_get",            "Texture._get",         script_texture__get         },
+    {"_typeof",         "Texture._typeof",      script_texture__typeof      },
+    {"_cloned",         "Texture._cloned",      script_texture__cloned      },
+    {"_tostring",       "Texture._tostring",    script_texture__tostring    },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_texture_static_methods[] = {
+    {"_dump",           "Texture._dump",        script_texture__dump        },
+    {"_load",           "Texture._load",        script_texture__load        },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_texture_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_texture_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_TEXTURE);
+
+    // define methods
+    for (int i = 0; script_texture_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_texture_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_texture_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_texture_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_texture_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_texture_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_texture_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_texture_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_texture_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_texture_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_texture_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_TextureClass);
+    sq_getstackobj(g_VM, -1, &g_TextureClass);
+    sq_addref(g_VM, &g_TextureClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+// GetSupportedVideoModes()
+static SQInteger script_GetSupportedVideoModes(HSQUIRRELVM v)
+{
+    std::vector<Dim2i> video_modes;
+    GetSupportedVideoModes(video_modes);
+    sq_newarray(v, video_modes.size());
+    if (video_modes.size() > 0) {
+        for (int i = 0; i < (int)video_modes.size(); ++i) {
+            sq_pushinteger(v, i); // key
+
+            sq_newtable(v); // value
+
+            sq_pushstring(v, "width", -1);
+            sq_pushinteger(v, video_modes[i].width);
+            sq_newslot(v, -3, SQFalse);
+
+            sq_pushstring(v, "height", -1);
+            sq_pushinteger(v, video_modes[i].height);
+            sq_newslot(v, -3, SQFalse);
+
+            sq_rawset(v, -3);
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+// OpenWindow(width, height, fullscreen)
+static SQInteger script_OpenWindow(HSQUIRRELVM v)
+{
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, width)
+    GET_ARG_INT(2, height)
+    GET_ARG_BOOL(3, fullscreen)
+    if (IsWindowOpen()) {
+        THROW_ERROR("Window already open")
+    }
+    if (width <= 0) {
+        THROW_ERROR("Invalid width")
+    }
+    if (height <= 0) {
+        THROW_ERROR("Invalid height")
+    }
+    if (!OpenWindow(width, height, (fullscreen == SQTrue ? true : false))) {
+        THROW_ERROR("Could not open window")
+    }
+    // set a default window icon if possible
+    FilePtr file = OpenFile("/common/system/window_icon.png");
+    if (file) {
+        CanvasPtr icon = LoadImage(file.get());
+        if (icon) {
+            g_Log->debug() << "bla test";
+            SetWindowIcon(icon.get());
+        }
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// IsWindowOpen()
+static SQInteger script_IsWindowOpen(HSQUIRRELVM v)
+{
+    RET_BOOL(IsWindowOpen())
+}
+
+//-----------------------------------------------------------------
+// GetWindowWidth()
+static SQInteger script_GetWindowWidth(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_INT(GetWindowWidth())
+}
+
+//-----------------------------------------------------------------
+// GetWindowHeight()
+static SQInteger script_GetWindowHeight(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_INT(GetWindowHeight())
+}
+
+//-----------------------------------------------------------------
+// IsWindowFullscreen()
+static SQInteger script_IsWindowFullscreen(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_BOOL(IsWindowFullscreen())
+}
+
+//-----------------------------------------------------------------
+// SetWindowFullscreen(fullscreen)
+static SQInteger script_SetWindowFullscreen(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_BOOL(1, fullscreen)
+    SetWindowFullscreen((fullscreen == SQTrue ? true : false));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// GetWindowTitle()
+static SQInteger script_GetWindowTitle(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    RET_STRING(GetWindowTitle())
+}
+
+//-----------------------------------------------------------------
+// SetWindowTitle(title)
+static SQInteger script_SetWindowTitle(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, title)
+    SetWindowTitle(title);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// SetWindowIcon(icon)
+static SQInteger script_SetWindowIcon(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_CANVAS(1, icon)
+    SetWindowIcon(icon);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// SwapFrameBuffers()
+static SQInteger script_SwapFrameBuffers(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    SwapFrameBuffers();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// GetFrameBufferClipRect()
+static SQInteger script_GetFrameBufferClipRect(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    Recti clip_rect;
+    if (!GetFrameBufferClipRect(clip_rect)) {
+        THROW_ERROR("Could not get frame buffer clipping rectangle")
+    }
+    RET_RECT(clip_rect)
+}
+
+//-----------------------------------------------------------------
+// SetFrameBufferClipRect(clip_rect)
+static SQInteger script_SetFrameBufferClipRect(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, clip_rect)
+    SetFrameBufferClipRect(*clip_rect);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// CloneFrameBufferSection(section)
+static SQInteger script_CloneFrameBufferSection(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, section)
+    TexturePtr texture = CloneFrameBufferSection(*section);
+    if (!texture) {
+        THROW_ERROR("Could not clone frame buffer section")
+    }
+    RET_TEXTURE(texture.get())
+}
+
+//-----------------------------------------------------------------
+// DrawPoint(x, y, color)
+static SQInteger script_DrawPoint(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_NARGS(3)
+    GET_ARG_INT(1, x)
+    GET_ARG_INT(2, y)
+    GET_ARG_INT(3, color)
+    DrawPoint(Vec2i(x, y), RGBA::Unpack((u32)color));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawLine(x1, y1, x2, y2, col1 [, col2])
+static SQInteger script_DrawLine(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(5)
+    GET_ARG_INT(1, x1);
+    GET_ARG_INT(2, y1);
+    GET_ARG_INT(3, x2);
+    GET_ARG_INT(4, y2);
+    GET_ARG_INT(5, col1)
+    GET_OPTARG_INT(6, col2, col1)
+    Vec2i positions[2] = {
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+    };
+    RGBA colors[2] = {
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
+    };
+    DrawLine(positions, colors);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawTriangle(x1, y1, x2, y2, x3, y3, col1 [, col2, col3])
+static SQInteger script_DrawTriangle(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(7)
+    GET_ARG_INT(1, x1)
+    GET_ARG_INT(2, y1)
+    GET_ARG_INT(3, x2)
+    GET_ARG_INT(4, y2)
+    GET_ARG_INT(5, x3)
+    GET_ARG_INT(6, y3)
+    GET_ARG_INT(7, col1)
+    GET_OPTARG_INT(8, col2, col1)
+    GET_OPTARG_INT(9, col3, col1)
+    Vec2i positions[3] = {
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+    };
+    RGBA colors[3] = {
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
+        RGBA::Unpack((u32)col3),
+    };
+    DrawTriangle(positions, colors);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawTexturedTriangle(tex, tx1, ty1, tx2, ty2, tx3, ty3, x1, y1, x2, y2, x3, y3 [, mask = CreateColor(255, 255, 255)])
+static SQInteger script_DrawTexturedTriangle(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(13)
+    GET_ARG_TEXTURE(1, tex)
+    GET_ARG_INT(2, tx1)
+    GET_ARG_INT(3, ty1)
+    GET_ARG_INT(4, tx2)
+    GET_ARG_INT(5, ty2)
+    GET_ARG_INT(6, tx3)
+    GET_ARG_INT(7, ty3)
+    GET_ARG_INT(8, x1)
+    GET_ARG_INT(9, y1)
+    GET_ARG_INT(10, x2)
+    GET_ARG_INT(11, y2)
+    GET_ARG_INT(12, x3)
+    GET_ARG_INT(13, y3)
+    GET_OPTARG_INT(14, mask, RGBA::Pack(255, 255, 255))
+    Vec2i texcoords[3] = {
+        Vec2i(tx1, ty1),
+        Vec2i(tx2, ty2),
+        Vec2i(tx3, ty3),
+    };
+    Vec2i positions[3] = {
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+    };
+    DrawTexturedTriangle(tex, texcoords, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawRect(rect, col1 [, col2, col3, col4])
+static SQInteger script_DrawRect(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(2)
+    GET_ARG_RECT(1, rect)
+    GET_ARG_INT(2, col1)
+    GET_OPTARG_INT(3, col2, col1)
+    GET_OPTARG_INT(4, col3, col1)
+    GET_OPTARG_INT(5, col4, col1)
+    RGBA colors[4] = {
+        RGBA::Unpack((u32)col1),
+        RGBA::Unpack((u32)col2),
+        RGBA::Unpack((u32)col3),
+        RGBA::Unpack((u32)col4),
+    };
+    DrawRect(*rect, colors);
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawImage(image, x, y [, mask = CreateColor(255, 255, 255)])
+static SQInteger script_DrawImage(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(3)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_INT(2, x)
+    GET_ARG_INT(3, y)
+    GET_OPTARG_INT(4, mask, RGBA::Pack(255, 255, 255))
+    DrawImage(image, Vec2i(x, y), RGBA::Unpack((u32)mask));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawSubImage(image, src_rect, x, y [, mask = CreateColor(255, 255, 255)])
+static SQInteger script_DrawSubImage(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(4)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_RECT(2, src_rect)
+    GET_ARG_INT(3, x)
+    GET_ARG_INT(4, y)
+    GET_OPTARG_INT(5, mask, RGBA::Pack(255, 255, 255))
+    DrawSubImage(image, *src_rect, Vec2i(x, y), RGBA::Unpack((u32)mask));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawImageQuad(image, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
+static SQInteger script_DrawImageQuad(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(9)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_INT(2, x1)
+    GET_ARG_INT(3, y1)
+    GET_ARG_INT(4, x2)
+    GET_ARG_INT(5, y2)
+    GET_ARG_INT(6, x3)
+    GET_ARG_INT(7, y3)
+    GET_ARG_INT(8, x4)
+    GET_ARG_INT(9, y4)
+    GET_OPTARG_INT(10, mask, RGBA::Pack(255, 255, 255))
+    Vec2i positions[4] = {
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+        Vec2i(x4, y4),
+    };
+    DrawImageQuad(image, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// DrawSubImageQuad(image, src_rect, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
+static SQInteger script_DrawSubImageQuad(HSQUIRRELVM v)
+{
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CHECK_MIN_NARGS(10)
+    GET_ARG_TEXTURE(1, image)
+    GET_ARG_RECT(2, src_rect)
+    GET_ARG_INT(3, x1)
+    GET_ARG_INT(4, y1)
+    GET_ARG_INT(5, x2)
+    GET_ARG_INT(6, y2)
+    GET_ARG_INT(7, x3)
+    GET_ARG_INT(8, y3)
+    GET_ARG_INT(9, x4)
+    GET_ARG_INT(10, y4)
+    GET_OPTARG_INT(11, mask, RGBA::Pack(255, 255, 255))
+    Vec2i positions[4] = {
+        Vec2i(x1, y1),
+        Vec2i(x2, y2),
+        Vec2i(x3, y3),
+        Vec2i(x4, y4),
+    };
+    DrawSubImageQuad(image, *src_rect, positions, RGBA::Unpack((u32)mask));
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_video_functions[] = {
+    {"GetSupportedVideoModes",      "GetSupportedVideoModes",   script_GetSupportedVideoModes   },
+    {"OpenWindow",                  "OpenWindow",               script_OpenWindow               },
+    {"IsWindowOpen",                "IsWindowOpen",             script_IsWindowOpen             },
+    {"GetWindowWidth",              "GetWindowWidth",           script_GetWindowWidth           },
+    {"GetWindowHeight",             "GetWindowHeight",          script_GetWindowHeight          },
+    {"IsWindowFullscreen",          "IsWindowFullscreen",       script_IsWindowFullscreen       },
+    {"SetWindowFullscreen",         "SetWindowFullscreen",      script_SetWindowFullscreen      },
+    {"GetWindowTitle",              "GetWindowTitle",           script_GetWindowTitle           },
+    {"SetWindowTitle",              "SetWindowTitle",           script_SetWindowTitle           },
+    {"SetWindowIcon",               "SetWindowIcon",            script_SetWindowIcon            },
+    {"SwapFrameBuffers",            "SwapFrameBuffers",         script_SwapFrameBuffers         },
+    {"GetFrameBufferClipRect",      "GetFrameBufferClipRect",   script_GetFrameBufferClipRect   },
+    {"SetFrameBufferClipRect",      "SetFrameBufferClipRect",   script_SetFrameBufferClipRect   },
+    {"CloneFrameBufferSection",     "CloneFrameBufferSection",  script_CloneFrameBufferSection  },
+    {"DrawPoint",                   "DrawPoint",                script_DrawPoint                },
+    {"DrawLine",                    "DrawLine",                 script_DrawLine                 },
+    {"DrawTriangle",                "DrawTriangle",             script_DrawTriangle             },
+    {"DrawTexturedTriangle",        "DrawTexturedTriangle",     script_DrawTexturedTriangle     },
+    {"DrawRect",                    "DrawRect",                 script_DrawRect                 },
+    {"DrawImage",                   "DrawImage",                script_DrawImage                },
+    {"DrawSubImage",                "DrawSubImage",             script_DrawSubImage             },
+    {"DrawImageQuad",               "DrawImageQuad",            script_DrawImageQuad            },
+    {"DrawSubImageQuad",            "DrawSubImageQuad",         script_DrawSubImageQuad         },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_video_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_video_api()
+{
+    // init classes
+    init_texture_class();
+
+    // register classes
+    sq_pushstring(g_VM, "Texture", -1);
+    sq_pushobject(g_VM, g_TextureClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_video_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_video_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_video_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_video_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_video_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_video_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_video_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                             AUDIO                              *
@@ -2744,7 +3555,6 @@ static SQInteger script_sound_destructor(SQUserPointer p, SQInteger size)
 // Sound.Load(filename [, streaming = false])
 static SQInteger script_sound_Load(HSQUIRRELVM v)
 {
-    SETUP_SOUND_OBJECT()
     CHECK_MIN_NARGS(1)
     GET_ARG_STRING(1, filename)
     GET_OPTARG_BOOL(2, streaming, SQFalse)
@@ -2763,7 +3573,6 @@ static SQInteger script_sound_Load(HSQUIRRELVM v)
 // Sound.LoadFromStream(stream [, streaming = false])
 static SQInteger script_sound_LoadFromStream(HSQUIRRELVM v)
 {
-    SETUP_SOUND_OBJECT()
     CHECK_MIN_NARGS(1)
     GET_ARG_STREAM(1, stream)
     GET_OPTARG_BOOL(2, streaming, SQFalse)
@@ -2906,6 +3715,69 @@ ISound* GetSound(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_sound_methods[] = {
+    {"play",            "Sound.play",           script_sound_play           },
+    {"stop",            "Sound.stop",           script_sound_stop           },
+    {"reset",           "Sound.reset",          script_sound_reset          },
+    {"isPlaying",       "Sound.isPlaying",      script_sound_isPlaying      },
+    {"isSeekable",      "Sound.isSeekable",     script_sound_isSeekable     },
+    {"_get",            "Sound._get",           script_sound__get           },
+    {"_set",            "Sound._set",           script_sound__set           },
+    {"_typeof",         "Sound._typeof",        script_sound__typeof        },
+    {"_tostring",       "Sound._tostring",      script_sound__tostring      },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_sound_static_methods[] = {
+    {"Load",            "Sound.Load",           script_sound_Load           },
+    {"LoadFromStream",  "Sound.LoadFromStream", script_sound_LoadFromStream },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_sound_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_sound_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_SOUND);
+
+    // define methods
+    for (int i = 0; script_sound_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_sound_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_sound_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_sound_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_sound_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_sound_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_sound_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_sound_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_sound_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_sound_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_sound_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_SoundClass);
+    sq_getstackobj(g_VM, -1, &g_SoundClass);
+    sq_addref(g_VM, &g_SoundClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
 /************************** SOUNDEFFECT ***************************/
 
 #define SETUP_SOUNDEFFECT_OBJECT() \
@@ -3046,6 +3918,110 @@ ISoundEffect* GetSoundEffect(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_soundeffect_methods[] = {
+    {"play",            "SoundEffect.play",           script_soundeffect_play           },
+    {"stop",            "SoundEffect.stop",           script_soundeffect_stop           },
+    {"_get",            "SoundEffect._get",           script_soundeffect__get           },
+    {"_set",            "SoundEffect._set",           script_soundeffect__set           },
+    {"_typeof",         "SoundEffect._typeof",        script_soundeffect__typeof        },
+    {"_tostring",       "SoundEffect._tostring",      script_soundeffect__tostring      },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_soundeffect_static_methods[] = {
+    {"Load",            "SoundEffect.Load",           script_soundeffect_Load           },
+    {"LoadFromStream",  "SoundEffect.LoadFromStream", script_soundeffect_LoadFromStream },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_soundeffect_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_soundeffect_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_SOUNDEFFECT);
+
+    // define methods
+    for (int i = 0; script_soundeffect_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_soundeffect_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_soundeffect_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_soundeffect_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_soundeffect_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_soundeffect_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_soundeffect_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_soundeffect_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_soundeffect_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_soundeffect_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_soundeffect_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_SoundEffectClass);
+    sq_getstackobj(g_VM, -1, &g_SoundEffectClass);
+    sq_addref(g_VM, &g_SoundEffectClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_audio_functions[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_audio_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_audio_api()
+{
+    // init classes
+    init_sound_class();
+    init_soundeffect_class();
+
+    // register classes
+    sq_pushstring(g_VM, "Sound", -1);
+    sq_pushobject(g_VM, g_SoundClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    sq_pushstring(g_VM, "SoundEffect", -1);
+    sq_pushobject(g_VM, g_SoundEffectClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_audio_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_audio_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_audio_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_audio_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_audio_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_audio_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_audio_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                             INPUT                              *
@@ -3082,21 +4058,21 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
         sq_newslot(v, -3, SQFalse);
 
         switch (event.type) {
-        case Event::KEY_DOWN:
-        case Event::KEY_UP:
+        case Event::ET_KEY_DOWN:
+        case Event::ET_KEY_UP:
             sq_pushstring(v, "key", -1);
             sq_pushinteger(v, event.key.key);
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::MOUSE_BUTTON_DOWN:
-        case Event::MOUSE_BUTTON_UP:
+        case Event::ET_MOUSE_BUTTON_DOWN:
+        case Event::ET_MOUSE_BUTTON_UP:
             sq_pushstring(v, "mbutton", -1);
             sq_pushinteger(v, event.mbutton.button);
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::MOUSE_MOTION:
+        case Event::ET_MOUSE_MOTION:
             sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mmotion.dx);
             sq_newslot(v, -3, SQFalse);
@@ -3106,7 +4082,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::MOUSE_WHEEL_MOTION:
+        case Event::ET_MOUSE_WHEEL_MOTION:
             sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mwheel.dx);
             sq_newslot(v, -3, SQFalse);
@@ -3116,8 +4092,8 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::JOY_BUTTON_DOWN:
-        case Event::JOY_BUTTON_UP:
+        case Event::ET_JOY_BUTTON_DOWN:
+        case Event::ET_JOY_BUTTON_UP:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jbutton.joy);
             sq_newslot(v, -3, SQFalse);
@@ -3127,7 +4103,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::JOY_AXIS_MOTION:
+        case Event::ET_JOY_AXIS_MOTION:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jaxis.joy);
             sq_newslot(v, -3, SQFalse);
@@ -3141,7 +4117,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::JOY_HAT_MOTION:
+        case Event::ET_JOY_HAT_MOTION:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jhat.joy);
             sq_newslot(v, -3, SQFalse);
@@ -3155,7 +4131,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::APP_QUIT:
+        case Event::ET_APP_QUIT:
             break;
 
         default:
@@ -3296,16 +4272,21 @@ static SQInteger script_HasJoystickForceFeedback(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// UploadJoystickForceEffect(joy, direction, duration, startLevel [, endLevel = startLevel])
+// UploadJoystickForceEffect(joy, duration, startLevel [, endLevel = startLevel])
 static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
 {
-    CHECK_MIN_NARGS(4)
+    CHECK_MIN_NARGS(3)
     GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, direction)
-    GET_ARG_INT(3, duration)
-    GET_ARG_INT(4, startLevel)
-    GET_OPTARG_INT(5, endLevel, startLevel)
-    int effect_id = UploadJoystickForceEffect(joy, direction, duration, startLevel, endLevel);
+    GET_ARG_INT(2, duration)
+    GET_ARG_INT(3, startLevel)
+    GET_OPTARG_INT(4, endLevel, startLevel)
+    if (startLevel < -100 || startLevel > 100) {
+        THROW_ERROR("Invalid start level")
+    }
+    if (endLevel < -100 || endLevel > 100) {
+        THROW_ERROR("Invalid end level")
+    }
+    int effect_id = UploadJoystickForceEffect(joy, duration, startLevel, endLevel);
     if (effect_id < 0) {
         THROW_ERROR("Could not upload joystick force effect")
     }
@@ -3360,43 +4341,199 @@ static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
     RET_VOID()
 }
 
-/******************************************************************
- *                                                                *
- *                             SYSTEM                             *
- *                                                                *
- ******************************************************************/
-
-/*********************** GLOBAL FUNCTIONS *************************/
+//-----------------------------------------------------------------
+static ScriptFuncReg script_input_functions[] = {
+    {"UpdateInput",                 "UpdateInput",                  script_UpdateInput                  },
+    {"AreEventsPending",            "AreEventsPending",             script_AreEventsPending             },
+    {"GetEvent",                    "GetEvent",                     script_GetEvent                     },
+    {"ClearEvents",                 "ClearEvents",                  script_ClearEvents                  },
+    {"IsKeyDown",                   "IsKeyDown",                    script_IsKeyDown                    },
+    {"GetMouseX",                   "GetMouseX",                    script_GetMouseX                    },
+    {"GetMouseY",                   "GetMouseY",                    script_GetMouseY                    },
+    {"IsMouseButtonDown",           "IsMouseButtonDown",            script_IsMouseButtonDown            },
+    {"GetNumJoysticks",             "GetNumJoysticks",              script_GetNumJoysticks              },
+    {"GetJoystickName",             "GetJoystickName",              script_GetJoystickName              },
+    {"GetNumJoystickButtons",       "GetNumJoystickButtons",        script_GetNumJoystickButtons        },
+    {"GetNumJoystickAxes",          "GetNumJoystickAxes",           script_GetNumJoystickAxes           },
+    {"GetNumJoystickHats",          "GetNumJoystickHats",           script_GetNumJoystickHats           },
+    {"IsJoystickButtonDown",        "IsJoystickButtonDown",         script_IsJoystickButtonDown         },
+    {"GetJoystickAxis",             "GetJoystickAxis",              script_GetJoystickAxis              },
+    {"GetJoystickHat",              "GetJoystickHat",               script_GetJoystickHat               },
+    {"HasJoystickForceFeedback",    "HasJoystickForceFeedback",     script_HasJoystickForceFeedback     },
+    {"UploadJoystickForceEffect",   "UploadJoystickForceEffect",    script_UploadJoystickForceEffect    },
+    {"PlayJoystickForceEffect",     "PlayJoystickForceEffect",      script_PlayJoystickForceEffect      },
+    {"StopJoystickForceEffect",     "StopJoystickForceEffect",      script_StopJoystickForceEffect      },
+    {"StopAllJoystickForceEffects", "StopAllJoystickForceEffects",  script_StopAllJoystickForceEffects  },
+    {"RemoveJoystickForceEffect",   "RemoveJoystickForceEffect",    script_RemoveJoystickForceEffect    },
+    {0,0}
+};
 
 //-----------------------------------------------------------------
-// GetTime()
-static SQInteger script_GetTime(HSQUIRRELVM v)
-{
-    RET_INT(GetTime())
-}
+static ScriptConstReg script_input_constants[] = {
+
+    // event constants
+    {"ET_KEY_DOWN",             Event::ET_KEY_DOWN          },
+    {"ET_KEY_UP",               Event::ET_KEY_UP            },
+    {"ET_MOUSE_BUTTON_DOWN",    Event::ET_MOUSE_BUTTON_DOWN },
+    {"ET_MOUSE_BUTTON_UP",      Event::ET_MOUSE_BUTTON_UP   },
+    {"ET_MOUSE_MOTION",         Event::ET_MOUSE_MOTION      },
+    {"ET_MOUSE_WHEEL_MOTION",   Event::ET_MOUSE_WHEEL_MOTION},
+    {"ET_JOY_BUTTON_DOWN",      Event::ET_JOY_BUTTON_DOWN   },
+    {"ET_JOY_BUTTON_UP",        Event::ET_JOY_BUTTON_UP     },
+    {"ET_JOY_AXIS_MOTION",      Event::ET_JOY_AXIS_MOTION   },
+    {"ET_JOY_HAT_MOTION",       Event::ET_JOY_HAT_MOTION    },
+    {"ET_APP_QUIT",             Event::ET_APP_QUIT          },
+
+    // key constants
+    {"KEY_A",               KEY_A               },
+    {"KEY_B",               KEY_B               },
+    {"KEY_C",               KEY_C               },
+    {"KEY_D",               KEY_D               },
+    {"KEY_E",               KEY_E               },
+    {"KEY_F",               KEY_F               },
+    {"KEY_G",               KEY_G               },
+    {"KEY_H",               KEY_H               },
+    {"KEY_I",               KEY_I               },
+    {"KEY_J",               KEY_J               },
+    {"KEY_K",               KEY_K               },
+    {"KEY_L",               KEY_L               },
+    {"KEY_M",               KEY_M               },
+    {"KEY_N",               KEY_N               },
+    {"KEY_O",               KEY_O               },
+    {"KEY_P",               KEY_P               },
+    {"KEY_Q",               KEY_Q               },
+    {"KEY_R",               KEY_R               },
+    {"KEY_S",               KEY_S               },
+    {"KEY_T",               KEY_T               },
+    {"KEY_U",               KEY_U               },
+    {"KEY_V",               KEY_V               },
+    {"KEY_W",               KEY_W               },
+    {"KEY_X",               KEY_X               },
+    {"KEY_Y",               KEY_Y               },
+    {"KEY_Z",               KEY_Z               },
+    {"KEY_1",               KEY_1               },
+    {"KEY_2",               KEY_2               },
+    {"KEY_3",               KEY_3               },
+    {"KEY_4",               KEY_4               },
+    {"KEY_5",               KEY_5               },
+    {"KEY_6",               KEY_6               },
+    {"KEY_7",               KEY_7               },
+    {"KEY_8",               KEY_8               },
+    {"KEY_9",               KEY_9               },
+    {"KEY_0",               KEY_0               },
+    {"KEY_RETURN",          KEY_RETURN          },
+    {"KEY_ESCAPE",          KEY_ESCAPE          },
+    {"KEY_BACKSPACE",       KEY_BACKSPACE       },
+    {"KEY_TAB",             KEY_TAB             },
+    {"KEY_SPACE",           KEY_SPACE           },
+    {"KEY_MINUS",           KEY_MINUS           },
+    {"KEY_EQUALS",          KEY_EQUALS          },
+    {"KEY_LEFTBRACKET",     KEY_LEFTBRACKET     },
+    {"KEY_RIGHTBRACKET",    KEY_RIGHTBRACKET    },
+    {"KEY_BACKSLASH",       KEY_BACKSLASH       },
+    {"KEY_SEMICOLON",       KEY_SEMICOLON       },
+    {"KEY_APOSTROPHE",      KEY_APOSTROPHE      },
+    {"KEY_GRAVE",           KEY_GRAVE           },
+    {"KEY_COMMA",           KEY_COMMA           },
+    {"KEY_PERIOD",          KEY_PERIOD          },
+    {"KEY_SLASH",           KEY_SLASH           },
+    {"KEY_CAPSLOCK",        KEY_CAPSLOCK        },
+    {"KEY_F1",              KEY_F1              },
+    {"KEY_F2",              KEY_F2              },
+    {"KEY_F3",              KEY_F3              },
+    {"KEY_F4",              KEY_F4              },
+    {"KEY_F5",              KEY_F5              },
+    {"KEY_F6",              KEY_F6              },
+    {"KEY_F7",              KEY_F7              },
+    {"KEY_F8",              KEY_F8              },
+    {"KEY_F9",              KEY_F9              },
+    {"KEY_F10",             KEY_F10             },
+    {"KEY_F11",             KEY_F11             },
+    {"KEY_F12",             KEY_F12             },
+    {"KEY_PRINTSCREEN",     KEY_PRINTSCREEN     },
+    {"KEY_SCROLLLOCK",      KEY_SCROLLLOCK      },
+    {"KEY_PAUSE",           KEY_PAUSE           },
+    {"KEY_INSERT",          KEY_INSERT          },
+    {"KEY_HOME",            KEY_HOME            },
+    {"KEY_PAGEUP",          KEY_PAGEUP          },
+    {"KEY_DELETE",          KEY_DELETE          },
+    {"KEY_END",             KEY_END             },
+    {"KEY_PAGEDOWN",        KEY_PAGEDOWN        },
+    {"KEY_RIGHT",           KEY_RIGHT           },
+    {"KEY_LEFT",            KEY_LEFT            },
+    {"KEY_DOWN",            KEY_DOWN            },
+    {"KEY_UP",              KEY_UP              },
+    {"KEY_NUMLOCKCLEAR",    KEY_NUMLOCKCLEAR    },
+    {"KEY_KP_DIVIDE",       KEY_KP_DIVIDE       },
+    {"KEY_KP_MULTIPLY",     KEY_KP_MULTIPLY     },
+    {"KEY_KP_MINUS",        KEY_KP_MINUS        },
+    {"KEY_KP_PLUS",         KEY_KP_PLUS         },
+    {"KEY_KP_ENTER",        KEY_KP_ENTER        },
+    {"KEY_KP_1",            KEY_KP_1            },
+    {"KEY_KP_2",            KEY_KP_2            },
+    {"KEY_KP_3",            KEY_KP_3            },
+    {"KEY_KP_4",            KEY_KP_4            },
+    {"KEY_KP_5",            KEY_KP_5            },
+    {"KEY_KP_6",            KEY_KP_6            },
+    {"KEY_KP_7",            KEY_KP_7            },
+    {"KEY_KP_8",            KEY_KP_8            },
+    {"KEY_KP_9",            KEY_KP_9            },
+    {"KEY_KP_0",            KEY_KP_0            },
+    {"KEY_KP_PERIOD",       KEY_KP_PERIOD       },
+    {"KEY_NONUSBACKSLASH",  KEY_NONUSBACKSLASH  },
+    {"KEY_KP_EQUALS",       KEY_KP_EQUALS       },
+    {"KEY_KP_COMMA",        KEY_KP_COMMA        },
+    {"KEY_CANCEL",          KEY_CANCEL          },
+    {"KEY_CLEAR",           KEY_CLEAR           },
+    {"KEY_LCTRL",           KEY_LCTRL           },
+    {"KEY_LSHIFT",          KEY_LSHIFT          },
+    {"KEY_LALT",            KEY_LALT            },
+    {"KEY_RCTRL",           KEY_RCTRL           },
+    {"KEY_RSHIFT",          KEY_RSHIFT          },
+    {"KEY_RALT",            KEY_RALT            },
+
+    // mouse constants
+    {"MOUSE_BUTTON_LEFT",   MOUSE_BUTTON_LEFT   },
+    {"MOUSE_BUTTON_MIDDLE", MOUSE_BUTTON_MIDDLE },
+    {"MOUSE_BUTTON_RIGHT",  MOUSE_BUTTON_RIGHT  },
+    {"MOUSE_BUTTON_X1",     MOUSE_BUTTON_X1     },
+    {"MOUSE_BUTTON_X2",     MOUSE_BUTTON_X2     },
+
+    // joystick constants
+    {"JOY_AXIS_X",          JOY_AXIS_X          },
+    {"JOY_AXIS_Y",          JOY_AXIS_Y          },
+    {"JOY_AXIS_Z",          JOY_AXIS_Z          },
+    {"JOY_AXIS_R",          JOY_AXIS_R          },
+    {"JOY_HAT_CENTERED",    JOY_HAT_CENTERED    },
+    {"JOY_HAT_UP",          JOY_HAT_UP          },
+    {"JOY_HAT_RIGHT",       JOY_HAT_RIGHT       },
+    {"JOY_HAT_DOWN",        JOY_HAT_DOWN        },
+    {"JOY_HAT_LEFT",        JOY_HAT_LEFT        },
+    {"JOY_HAT_RIGHTUP",     JOY_HAT_RIGHTUP     },
+    {"JOY_HAT_RIGHTDOWN",   JOY_HAT_RIGHTDOWN   },
+    {"JOY_HAT_LEFTUP",      JOY_HAT_LEFTUP      },
+    {"JOY_HAT_LEFTDOWN",    JOY_HAT_LEFTDOWN    },
+
+    {0,0}
+};
 
 //-----------------------------------------------------------------
-// GetTicks()
-static SQInteger script_GetTicks(HSQUIRRELVM v)
+static void register_input_api()
 {
-    RET_INT(GetTicks())
-}
+    // register functions
+    for (int i = 0; script_input_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_input_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_input_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_input_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
 
-//-----------------------------------------------------------------
-// GetRandom()
-static SQInteger script_GetRandom(HSQUIRRELVM v)
-{
-    RET_INT(GetRandom())
-}
-
-//-----------------------------------------------------------------
-// Sleep(ms)
-static SQInteger script_Sleep(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, ms)
-    Sleep(ms);
-    RET_VOID()
+    // register constants
+    for (int i = 0; script_input_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_input_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_input_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
 }
 
 /******************************************************************
@@ -3566,11 +4703,143 @@ ZStream* GetZStream(SQInteger idx)
     return 0;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_zstream_methods[] = {
+    {"constructor",     "ZStream.constructor",      script_zstream_constructor      },
+    {"getBufferSize",   "ZStream.getBufferSize",    script_zstream_getBufferSize    },
+    {"setBufferSize",   "ZStream.setBufferSize",    script_zstream_setBufferSize    },
+    {"compress",        "ZStream.compress",         script_zstream_compress         },
+    {"decompress",      "ZStream.decompress",       script_zstream_decompress       },
+    {"finish",          "ZStream.finish",           script_zstream_finish           },
+    {"_typeof",         "ZStream._typeof",          script_zstream__typeof          },
+    {"_tostring",       "ZStream._tostring",        script_zstream__tostring        },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_zstream_static_methods[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_zstream_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_zstream_class()
+{
+    sq_newclass(g_VM, SQFalse); // create class
+    sq_settypetag(g_VM, -1, TT_ZSTREAM);
+
+    // define methods
+    for (int i = 0; script_zstream_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_zstream_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_zstream_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_zstream_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_zstream_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_zstream_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_zstream_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_zstream_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_zstream_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_zstream_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_zstream_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_ZStreamClass);
+    sq_getstackobj(g_VM, -1, &g_ZStreamClass);
+    sq_addref(g_VM, &g_ZStreamClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_compression_functions[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_compression_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_compression_api()
+{
+    // init classes
+    init_zstream_class();
+
+    // register classes
+    sq_pushstring(g_VM, "ZStream", -1);
+    sq_pushobject(g_VM, g_ZStreamClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    // register functions
+    for (int i = 0; script_compression_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_compression_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_compression_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_compression_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_compression_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_compression_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_compression_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
- *                              SCRIPT                            *
+ *                             SYSTEM                             *
  *                                                                *
  ******************************************************************/
+
+/*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+// GetTime()
+static SQInteger script_GetTime(HSQUIRRELVM v)
+{
+    RET_INT(GetTime())
+}
+
+//-----------------------------------------------------------------
+// GetTicks()
+static SQInteger script_GetTicks(HSQUIRRELVM v)
+{
+    RET_INT(GetTicks())
+}
+
+//-----------------------------------------------------------------
+// GetRandom()
+static SQInteger script_GetRandom(HSQUIRRELVM v)
+{
+    RET_INT(GetRandom())
+}
+
+//-----------------------------------------------------------------
+// ThreadSleep(ms)
+static SQInteger script_ThreadSleep(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, ms)
+    ThreadSleep(ms);
+    RET_VOID()
+}
 
 //-----------------------------------------------------------------
 static bool compile_buffer(HSQUIRRELVM v, const std::string& name, const void* buffer, int size, bool raiseerror = true)
@@ -3725,8 +4994,8 @@ bool EvaluateScript(const std::string& filename)
 }
 
 //-----------------------------------------------------------------
-// RequireScript(name)
-static SQInteger script_RequireScript(HSQUIRRELVM v)
+// EvaluateScript(name)
+static SQInteger script_EvaluateScript(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_STRING(1, name)
@@ -3740,6 +5009,29 @@ static SQInteger script_RequireScript(HSQUIRRELVM v)
         THROW_ERROR("Invalid path")
     }
 
+    // evaluate script
+    if (!EvaluateScript(script)) {
+        THROW_ERROR("Could not evaluate script")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// RequireScript(name)
+static SQInteger script_RequireScript(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, name)
+    if (strlen(name) == 0) {
+        THROW_ERROR("Empty script name")
+    }
+
+    // complement path
+    std::string script = name;
+    if (!ComplementPath(script)) {
+        THROW_ERROR1("Invalid path '%s'", script.c_str())
+    }
+
     // see if the script has already been loaded
     for (int i = 0; i < (int)g_ScriptRegistry.size(); ++i) {
         if (g_ScriptRegistry[i] == script) {
@@ -3751,7 +5043,7 @@ static SQInteger script_RequireScript(HSQUIRRELVM v)
     if (!EvaluateScript(script + BYTECODE_FILE_EXT) && // prefer bytecode
         !EvaluateScript(script +   SCRIPT_FILE_EXT))
     {
-        THROW_ERROR("Could not evaluate script")
+        THROW_ERROR1("Could not evaluate script '%s'", script.c_str())
     }
 
     // register script
@@ -3772,12 +5064,6 @@ static SQInteger script_GetLoadedScripts(HSQUIRRELVM v)
     }
     return 1;
 }
-
-/******************************************************************
- *                                                                *
- *                        SERIALIZATION                           *
- *                                                                *
- ******************************************************************/
 
 //-----------------------------------------------------------------
 bool ObjectToJSON(SQInteger idx)
@@ -4307,6 +5593,48 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
     return 1;
 }
 
+//-----------------------------------------------------------------
+static ScriptFuncReg script_system_functions[] = {
+    {"GetTime",             "GetTime",          script_GetTime          },
+    {"GetTicks",            "GetTicks",         script_GetTicks         },
+    {"GetRandom",           "GetRandom",        script_GetRandom        },
+    {"ThreadSleep",         "ThreadSleep",      script_ThreadSleep      },
+    {"CompileString",       "CompileString",    script_CompileString    },
+    {"CompileBlob",         "CompileBlob",      script_CompileBlob      },
+    {"CompileStream",       "CompileStream",    script_CompileStream    },
+    {"EvaluateScript",      "EvaluateScript",   script_EvaluateScript   },
+    {"RequireScript",       "RequireScript",    script_RequireScript    },
+    {"GetLoadedScripts",    "GetLoadedScripts", script_GetLoadedScripts },
+    {"ObjectToJSON",        "ObjectToJSON",     script_ObjectToJSON     },
+    {"DumpObject",          "DumpObject",       script_DumpObject       },
+    {"LoadObject",          "LoadObject",       script_LoadObject       },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_system_constants[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void register_system_api()
+{
+    // register functions
+    for (int i = 0; script_system_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_system_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_system_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_system_functions[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // register constants
+    for (int i = 0; script_system_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_system_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_system_constants[i].value);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+}
+
 /******************************************************************
  *                                                                *
  *                            INTERNAL                            *
@@ -4402,9 +5730,9 @@ bool InitScript(const Log& log)
     sq_seterrorhandler(g_VM);
     sq_setprintfunc(g_VM, print_func, print_func);
 
-    sq_pushroottable(g_VM); // push root table
+    sq_pushroottable(g_VM); // push root table for registration
 
-    // register standard libraries
+    // register squirrel libraries
     if (!SQ_SUCCEEDED(sqstd_register_mathlib(g_VM))) {
         log.error() << "Failed registering math library";
         goto lib_init_failed;
@@ -4414,11 +5742,20 @@ bool InitScript(const Log& log)
         goto lib_init_failed;
     }
 
-    // TODO register api
+    // register sphere API
+    register_core_api();
+    register_io_api();
+    register_graphics_api(); // maybe merge graphics and video?
+    register_filesystem_api(); // must be registered after io, because file needs stream to be initialized first; maybe merge filesystem and io?
+    register_video_api();
+    register_audio_api();
+    register_input_api();
+    register_compression_api(); // maybe name it util and put in there the upcoming encryption api as well?
+    register_system_api();
 
-    sq_poptop(g_VM); // pop root table
+    sq_poptop(g_VM); // done registering, pop root table
 
-    g_Log = &log; // will be used to output compiler and runtime script errors
+    g_Log = &log; // will be used to output compiler and runtime script errors, as well as to output the result of the print function
 
     return true;
 
@@ -4448,20 +5785,20 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
         FilePtr file = OpenFile(script);
         if (LoadObject(file.get())) { // try loading as bytecode
             if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
-                log.error() << "Error loading bytecode";
+                log.error() << "Error loading script '" << script << "' as bytecode";
                 sq_settop(g_VM, old_top);
                 return;
             }
         } else { // try compiling as plain text
             file->seek(0); // LoadObject changed the stream position, set it back to beginning
             if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
-                log.error() << "Error compiling script";
+                log.error() << "Error compiling script '" << script << "'";
                 sq_settop(g_VM, old_top);
                 return;
             }
         }
     } else { // file does not exist
-        log.error() << "Script file does not exist";
+        log.error() << "Script '" << script << "' does not exist";
         sq_settop(g_VM, old_top);
         return;
     }
@@ -4469,7 +5806,7 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
     // run script
     sq_pushroottable(g_VM); // this
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQFalse, SQTrue))) {
-        log.error() << "Error executing script";
+        log.error() << "Error executing script '" << script << "'";
         sq_settop(g_VM, old_top);
         return;
     }
@@ -4479,12 +5816,12 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
     sq_pushroottable(g_VM);
     sq_pushstring(g_VM, "main", -1);
     if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
-        log.error() << "Entry point main not defined";
+        log.error() << "Entry point 'main' not defined in script '" << script << "'";
         sq_settop(g_VM, old_top);
         return;
     }
     if (sq_gettype(g_VM, -1) != OT_CLOSURE) {
-        log.error() << "Symbol main is not a function";
+        log.error() << "Symbol 'main' is not a function in script '" << script << "'";
         sq_settop(g_VM, old_top);
         return;
     }
@@ -4493,7 +5830,7 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
         sq_pushstring(g_VM, args[i].c_str(), -1);
     }
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1 + args.size(), SQFalse, SQTrue))) {
-        log.error() << "Error calling main";
+        log.error() << "Error calling 'main' in script '" << script << "'";
     }
     sq_settop(g_VM, old_top);
 }

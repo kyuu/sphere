@@ -6,7 +6,7 @@
 
 
 //-----------------------------------------------------------------
-bool readi8l(IStream* s, i8& n)
+bool readi8(IStream* s, i8& n)
 {
     assert(s);
     return s->read(&n, sizeof(n)) == sizeof(n);

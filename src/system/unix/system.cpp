@@ -32,7 +32,7 @@ int GetRandom()
 }
 
 //-----------------------------------------------------------------
-void Sleep(int ms)
+void ThreadSleep(int ms)
 {
     usleep(ms * 1000);
 }

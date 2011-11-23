@@ -72,7 +72,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(ProjectDir)..\..\..\build\$(TargetName)$(TargetExt)</OutputFile>
       <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;/dev/libs/vs/zlib/lib;/dev/libs/vs/boost/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;sdlmain.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Windows</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -90,7 +91,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <OutputFile>$(ProjectDir)..\..\..\build\$(TargetName)$(TargetExt)</OutputFile>
       <AdditionalLibraryDirectories>/dev/libs/vs/sdl13/lib;/dev/libs/vs/squirrel3/lib;/dev/libs/vs/audiere/lib;/dev/libs/vs/corona/lib;/dev/libs/vs/zlib/lib;/dev/libs/vs/boost/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;squirrel.lib;sqstdlib.lib;sdl.lib;sdlmain.lib;audiere.lib;corona.lib;zdll.lib;libboost_filesystem.lib;libboost_system.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Windows</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

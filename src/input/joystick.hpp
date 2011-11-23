@@ -32,7 +32,7 @@ int  GetJoystickHat(int joy, int hat);
 
 // force feedback
 bool HasJoystickForceFeedback(int joy);
-int  UploadJoystickForceEffect(int joy, int direction, int duration, int startLevel, int endLevel);
+int  UploadJoystickForceEffect(int joy, int duration, int startLevel, int endLevel);
 bool PlayJoystickForceEffect(int joy, int effect, int times = 1);
 bool StopJoystickForceEffect(int joy, int effect);
 bool StopAllJoystickForceEffects(int joy);

@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <vector>
 #include <string>
+#include <SDL.h>
 #include "version.hpp"
 #include "Log.hpp"
 #include "filesystem/filesystem.hpp"
@@ -10,7 +11,7 @@
 #include "input/input.hpp"
 #include "script/script.hpp"
 
-
+//-----------------------------------------------------------------
 int main(int argc, char* argv[])
 {
     Log log;
