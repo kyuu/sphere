@@ -20,6 +20,7 @@
     <ClCompile Include="..\..\..\src\filesystem\File.cpp" />
     <ClCompile Include="..\..\..\src\graphics\Canvas.cpp" />
     <ClCompile Include="..\..\..\src\image\corona\image.cpp" />
+    <ClCompile Include="..\..\..\src\IniFile.cpp" />
     <ClCompile Include="..\..\..\src\input\sdl\input.cpp" />
     <ClCompile Include="..\..\..\src\io\Blob.cpp" />
     <ClCompile Include="..\..\..\src\io\endian.cpp" />

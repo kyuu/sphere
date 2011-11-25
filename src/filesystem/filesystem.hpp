@@ -23,6 +23,8 @@ void DeinitFilesystem();
 const std::string& GetEnginePath();
 std::string GetCurrentPath();
 bool SetCurrentPath(const std::string& p);
+const std::string& GetCommonPath();
+void SetCommonPath(const std::string& p);
 const std::string& GetDataPath();
 void SetDataPath(const std::string& p);
 

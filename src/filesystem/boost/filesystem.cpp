@@ -9,9 +9,9 @@ namespace fs = boost::filesystem;
 
 //-----------------------------------------------------------------
 // globals
-static fs::path g_engine_path;
-static fs::path g_common_path;
-static fs::path g_data_path;
+static fs::path g_EnginePath;
+static fs::path g_CommonPath;
+static fs::path g_DataPath;
 
 //-----------------------------------------------------------------
 static bool process_path(const std::string& raw, std::string& rel, std::string& abs)
@@ -28,35 +28,35 @@ static bool process_path(const std::string& raw, std::string& rel, std::string& 
 
     if (raw.empty()) { // path is empty, so simply defaults to the data path
         rel = "/data";
-        abs = g_data_path.string();
+        abs = g_DataPath.string();
     } else if (raw[0] == '/') {
         if (raw.find("/data") == 0) { // path begins with "/data", so is relative to the data path
             rel = raw;
             if (raw.size() == strlen("/data")) { // path is equal to "/data"
-                abs = g_data_path.string();
+                abs = g_DataPath.string();
             } else {
-                abs = (g_data_path / raw.substr(strlen("/data"))).string();
+                abs = (g_DataPath / raw.substr(strlen("/data"))).string();
             }
         } else if (raw.find("/common") == 0) { // path begins with "/common", so is relative to the common path
             rel = raw;
             if (raw.size() == strlen("/common")) { // path is equal to "/common"
-                abs = g_common_path.string();
+                abs = g_CommonPath.string();
             } else {
-                abs = (g_common_path / raw.substr(strlen("/common"))).string();
+                abs = (g_CommonPath / raw.substr(strlen("/common"))).string();
             }
         } else if (raw.find("/engine") == 0) { // path begins with "/engine", so is relative to the engine path
             rel = raw;
             if (raw.size() == strlen("/engine")) { // path is equal to "/engine"
-                abs = g_engine_path.string();
+                abs = g_EnginePath.string();
             } else {
-                abs = (g_engine_path / raw.substr(strlen("/engine"))).string();
+                abs = (g_EnginePath / raw.substr(strlen("/engine"))).string();
             }
         } else {
             return false;
         }
     } else { // path begins not with a forwardslash, so is relative to the data path
         rel = std::string("/data/") + raw;
-        abs = (g_data_path / raw).string();
+        abs = (g_DataPath / raw).string();
     }
 
     return true;
@@ -207,8 +207,7 @@ bool GetFileList(const std::string& directory, std::vector<std::string>& fileLis
 //-----------------------------------------------------------------
 bool InitFilesystem(const Log& log)
 {
-    g_engine_path = fs::initial_path();
-    g_common_path = g_engine_path / "common";
+    g_EnginePath = fs::initial_path();
     return true;
 }
 
@@ -221,7 +220,7 @@ void DeinitFilesystem()
 //-----------------------------------------------------------------
 const std::string& GetEnginePath()
 {
-    return g_engine_path.string();
+    return g_EnginePath.string();
 }
 
 //-----------------------------------------------------------------
@@ -242,13 +241,41 @@ bool SetCurrentPath(const std::string& path)
 }
 
 //-----------------------------------------------------------------
+const std::string& GetCommonPath()
+{
+    return g_CommonPath.string();
+}
+
+//-----------------------------------------------------------------
+void SetCommonPath(const std::string& p)
+{
+    if (p.empty()) {
+        g_CommonPath = g_EnginePath / "common";
+        return;
+    }
+    if (fs::path(p).is_complete()) {
+        g_CommonPath = p;
+    } else {
+        g_CommonPath = g_EnginePath / p;
+    }
+}
+
+//-----------------------------------------------------------------
 const std::string& GetDataPath()
 {
-    return g_data_path.string();
+    return g_DataPath.string();
 }
 
 //-----------------------------------------------------------------
 void SetDataPath(const std::string& p)
 {
-    g_data_path = p;
+    if (p.empty()) {
+        g_DataPath = g_EnginePath / "common";
+        return;
+    }
+    if (fs::path(p).is_complete()) {
+        g_DataPath = p;
+    } else {
+        g_DataPath = g_EnginePath / p;
+    }
 }

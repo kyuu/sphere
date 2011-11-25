@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include "version.hpp"
 #include "Log.hpp"
+#include "Config.hpp"
 #include "filesystem/filesystem.hpp"
 #include "system/system.hpp"
 #include "video/video.hpp"
@@ -68,42 +69,47 @@ int main(int argc, char* argv[])
     }
     atexit(DeinitScript);
 
+    // load configuration
+    log.info() << "Load configuration";
+    Config config("engine.cfg");
+
     // process command line options
     log.info() << "Process command line options";
-    std::string data = GetEnginePath() + "/data";
-    std::string startup = "game";
-    std::vector<std::string> args;
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "-data" && i + 1 < argc) {
-            data = argv[i + 1];
+        if (arg == "-common" && i + 1 < argc) {
+            config.CommonPath = argv[i + 1];
+            i++;
+        } else if (arg == "-data" && i + 1 < argc) {
+            config.DataPath = argv[i + 1];
             i++;
         } else if (arg == "-startup" && i + 1 < argc) {
-            startup = argv[i + 1];
+            config.StartupScript = argv[i + 1];
             i++;
         } else if (arg == "-arg" && i + 1 < argc) {
-            args.push_back(argv[i + 1]);
+            config.GameArgs.push_back(argv[i + 1]);
             i++;
         }
     }
 
-    // set and enter data path
+    // set paths and enter game directory
+    SetCommonPath(config.CommonPath);
+    SetDataPath(config.DataPath);
     log.info() << "Enter game directory";
-    SetDataPath(data);
-    if (!SetCurrentPath(data)) {
-        log.error() << "Could not enter game directory '" << data << "'";
+    if (!SetCurrentPath(config.DataPath)) {
+        log.error() << "Could not enter game directory '" << config.DataPath << "'";
         return 0;
     }
 
     // run game
     log.info() << "Run game";
     try {
-        if (DoesFileExist(startup + ".bytecode")) {
-            RunGame(log, startup + ".bytecode", args);
-        } else if (DoesFileExist(startup + ".script")) {
-            RunGame(log, startup + ".script", args);
+        if (DoesFileExist(config.StartupScript + ".bytecode")) {
+            RunGame(log, config.StartupScript + ".bytecode", config.GameArgs);
+        } else if (DoesFileExist(config.StartupScript + ".script")) {
+            RunGame(log, config.StartupScript + ".script", config.GameArgs);
         } else {
-            log.error() << "Startup script '" << startup << "' does not exist";
+            log.error() << "Startup script '" << config.StartupScript << "' does not exist";
         }
     } catch (const std::exception& e) {
         log.error() << "Exception caught: " << (e.what() ? e.what() : "N/A");
