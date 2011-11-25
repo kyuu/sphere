@@ -3101,7 +3101,6 @@ static SQInteger script_OpenWindow(HSQUIRRELVM v)
     if (file) {
         CanvasPtr icon = LoadImage(file.get());
         if (icon) {
-            g_Log->debug() << "bla test";
             SetWindowIcon(icon.get());
         }
     }
