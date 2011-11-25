@@ -4827,8 +4827,8 @@ static SQInteger script_GetRandom(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// ThreadSleep(ms)
-static SQInteger script_ThreadSleep(HSQUIRRELVM v)
+// Sleep(ms)
+static SQInteger script_Sleep(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_INT(1, ms)
@@ -5593,7 +5593,7 @@ static ScriptFuncReg script_system_functions[] = {
     {"GetTime",             "GetTime",          script_GetTime          },
     {"GetTicks",            "GetTicks",         script_GetTicks         },
     {"GetRandom",           "GetRandom",        script_GetRandom        },
-    {"ThreadSleep",         "ThreadSleep",      script_ThreadSleep      },
+    {"Sleep",               "Sleep",            script_Sleep            },
     {"CompileString",       "CompileString",    script_CompileString    },
     {"CompileBlob",         "CompileBlob",      script_CompileBlob      },
     {"CompileStream",       "CompileStream",    script_CompileStream    },
