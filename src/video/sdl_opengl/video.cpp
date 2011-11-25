@@ -11,11 +11,11 @@
 
 //-----------------------------------------------------------------
 // globals
-SDL_Window* g_window = 0;
-int g_window_width  = 0;
-int g_window_height = 0;
-GLint g_max_texture_size = 0;
-SDL_GLContext g_context;
+SDL_Window* g_Window = 0;
+int g_WindowWidth  = 0;
+int g_WindowHeight = 0;
+GLint g_MaxTextureSize = 0;
+SDL_GLContext g_GLContext;
 
 //-----------------------------------------------------------------
 static bool is_sdl_pixel_format_supported(Uint32 format)
@@ -59,7 +59,7 @@ void GetSupportedVideoModes(std::vector<Dim2i>& out)
 //-----------------------------------------------------------------
 bool OpenWindow(int width, int height, bool fullscreen)
 {
-    assert(!g_window);
+    assert(!g_Window);
 
     if (width * height <= 0) {
         return false;
@@ -76,15 +76,15 @@ bool OpenWindow(int width, int height, bool fullscreen)
     }
 
     // open window
-    g_window = SDL_CreateWindow(oss.str().c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
-    if (!g_window) {
+    g_Window = SDL_CreateWindow(oss.str().c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+    if (!g_Window) {
         return false;
     }
-    g_window_width  = width;
-    g_window_height = height;
+    g_WindowWidth  = width;
+    g_WindowHeight = height;
 
     // create OpenGL context
-    g_context = SDL_GL_CreateContext(g_window);
+    g_GLContext = SDL_GL_CreateContext(g_Window);
 
     // initialize a 2D mode
     glViewport(0, 0, width, height);
@@ -110,7 +110,7 @@ bool OpenWindow(int width, int height, bool fullscreen)
     glEnable(GL_TEXTURE_2D);
 
     // get max texture size
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &g_max_texture_size);
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &g_MaxTextureSize);
 
     return true;
 }
@@ -118,57 +118,57 @@ bool OpenWindow(int width, int height, bool fullscreen)
 //-----------------------------------------------------------------
 bool IsWindowOpen()
 {
-    return g_window != 0;
+    return g_Window != 0;
 }
 
 //-----------------------------------------------------------------
 int GetWindowWidth()
 {
-    assert(g_window);
-    return g_window_width;
+    assert(g_Window);
+    return g_WindowWidth;
 }
 
 //-----------------------------------------------------------------
 int GetWindowHeight()
 {
-    assert(g_window);
-    return g_window_height;
+    assert(g_Window);
+    return g_WindowHeight;
 }
 
 //-----------------------------------------------------------------
 bool IsWindowFullscreen()
 {
-    assert(g_window);
-    return (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0;
+    assert(g_Window);
+    return (SDL_GetWindowFlags(g_Window) & SDL_WINDOW_FULLSCREEN) != 0;
 }
 
 //-----------------------------------------------------------------
 bool SetWindowFullscreen(bool fullscreen)
 {
-    assert(g_window);
-    return SDL_SetWindowFullscreen(g_window, (fullscreen ? SDL_TRUE : SDL_FALSE)) == 0;
+    assert(g_Window);
+    return SDL_SetWindowFullscreen(g_Window, (fullscreen ? SDL_TRUE : SDL_FALSE)) == 0;
 }
 
 //-----------------------------------------------------------------
 const char* GetWindowTitle()
 {
-    assert(g_window);
-    return SDL_GetWindowTitle(g_window);
+    assert(g_Window);
+    return SDL_GetWindowTitle(g_Window);
 }
 
 //-----------------------------------------------------------------
 void SetWindowTitle(const char* title)
 {
-    assert(g_window);
+    assert(g_Window);
     if (title) {
-        SDL_SetWindowTitle(g_window, title);
+        SDL_SetWindowTitle(g_Window, title);
     }
 }
 
 //-----------------------------------------------------------------
 void SetWindowIcon(Canvas* canvas)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(canvas);
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
     Uint32 rmask = 0xFF000000;
@@ -191,30 +191,50 @@ void SetWindowIcon(Canvas* canvas)
                                                     bmask,
                                                     amask);
     if (surface) {
-        SDL_SetWindowIcon(g_window, surface);
+        SDL_SetWindowIcon(g_Window, surface);
         SDL_FreeSurface(surface);
     }
 }
 
 //-----------------------------------------------------------------
-void SwapFrameBuffers()
+void ShowFrame()
 {
-    assert(g_window);
-    SDL_GL_SwapWindow(g_window);
+    assert(g_Window);
+    SDL_GL_SwapWindow(g_Window);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 //-----------------------------------------------------------------
-ITexture* CreateTexture(Canvas* canvas)
+bool GetFrameScissor(Recti& scissor)
 {
-    assert(g_window);
-    assert(canvas);
+    assert(g_Window);
+    GLint rect[4];
+    glGetIntegerv(GL_SCISSOR_BOX, rect);
+    scissor.ul.x = rect[0];
+    scissor.ul.y = rect[1] - g_WindowHeight + rect[3];
+    scissor.lr.x = (rect[0] + rect[2]) - 1;
+    scissor.lr.y = (scissor.ul.y + rect[3]) - 1;
+    return true;
+}
 
-    double log2_width  = log10((double)canvas->getWidth())  / log10(2.0);
-    double log2_height = log10((double)canvas->getHeight()) / log10(2.0);
+//-----------------------------------------------------------------
+void SetFrameScissor(const Recti& scissor)
+{
+    assert(g_Window);
+    glScissor(scissor.ul.x, (g_WindowHeight - scissor.getY()) - scissor.getHeight(), scissor.getWidth(), scissor.getHeight());
+}
 
-    int tex_width  = canvas->getWidth();
-    int tex_height = canvas->getHeight();
+//-----------------------------------------------------------------
+ITexture* CreateTexture(Canvas* pixels)
+{
+    assert(g_Window);
+    assert(pixels);
+
+    double log2_width  = log10((double)pixels->getWidth())  / log10(2.0);
+    double log2_height = log10((double)pixels->getHeight()) / log10(2.0);
+
+    int tex_width  = pixels->getWidth();
+    int tex_height = pixels->getHeight();
 
     if (log2_width != floor(log2_width)) {
         tex_width = 1 << (int)ceil(log2_width);
@@ -223,25 +243,25 @@ ITexture* CreateTexture(Canvas* canvas)
         tex_height = 1 << (int)ceil(log2_height);
     }
 
-    // make sure texture is, at max, g_max_texture_size by g_max_texture_size
-    if (tex_width > g_max_texture_size || tex_height > g_max_texture_size) {
+    // make sure texture is, at max, g_MaxTextureSize by g_MaxTextureSize
+    if (tex_width > g_MaxTextureSize || tex_height > g_MaxTextureSize) {
         return 0;
     }
 
-    RGBA* pixels = canvas->getPixels();
+    RGBA* tex_pixels = pixels->getPixels();
 
     // make sure texture size is power of 2
-    if (tex_width != canvas->getWidth() || tex_height != canvas->getHeight()) {
+    if (tex_width != pixels->getWidth() || tex_height != pixels->getHeight()) {
         // allocate a new pixel buffer
         try {
-            pixels = new RGBA[tex_width * tex_height];
+            tex_pixels = new RGBA[tex_width * tex_height];
         } catch (const std::bad_alloc&) {
             ReportOutOfMemory();
             return 0;
         }
         // copy the old pixels into the new buffer
-        for (int i = 0; i < canvas->getHeight(); i++) {
-            memcpy(pixels + i * tex_width, canvas->getPixels() + i * canvas->getWidth(), canvas->getPitch());
+        for (int i = 0; i < pixels->getHeight(); i++) {
+            memcpy(tex_pixels + i * tex_width, pixels->getPixels() + i * pixels->getWidth(), pixels->getPitch());
         }
     }
 
@@ -250,28 +270,28 @@ ITexture* CreateTexture(Canvas* canvas)
     glBindTexture(GL_TEXTURE_2D, gl_texture);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_width, tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_width, tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex_pixels);
 
-    if (pixels != canvas->getPixels()) {
-        delete[] pixels;
+    if (tex_pixels != pixels->getPixels()) {
+        delete[] tex_pixels;
     }
 
-    return Texture::Create(gl_texture, tex_width, tex_height, canvas->getWidth(), canvas->getHeight());
+    return Texture::Create(gl_texture, tex_width, tex_height, pixels->getWidth(), pixels->getHeight());
 }
 
 //-----------------------------------------------------------------
-ITexture* CloneFrameBufferSection(const Recti& section)
+ITexture* CloneFrame(Recti* section)
 {
-    assert(g_window);
+    assert(g_Window);
 
-    if (!Recti(0, 0, g_window_width - 1, g_window_height - 1).contains(section)) {
+    if (!Recti(0, 0, g_WindowWidth - 1, g_WindowHeight - 1).contains(*section)) {
         return 0;
     }
 
-    int x = section.getX();
-    int y = section.getY();
-    int width  = section.getWidth();
-    int height = section.getHeight();
+    int x = section->getX();
+    int y = section->getY();
+    int width  = section->getWidth();
+    int height = section->getHeight();
 
     double log2_width  = log10((double)width)  / log10(2.0);
     double log2_height = log10((double)height) / log10(2.0);
@@ -286,45 +306,18 @@ ITexture* CloneFrameBufferSection(const Recti& section)
         tex_height = 1 << (int)ceil(log2_height);
     }
 
-    GLuint texture_id;
-    glGenTextures(1, &texture_id);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
+    GLuint gl_texture;
+    glGenTextures(1, &gl_texture);
+    glBindTexture(GL_TEXTURE_2D, gl_texture);
     glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x, y, tex_width, tex_height, 0);
 
-    Texture* texture = Texture::Create(texture_id, tex_width, tex_height, width, height);
-
-    if (!texture) {
-        glDeleteTextures(1, &texture_id);
-        return 0;
-    }
-
-    return texture;
-}
-
-//-----------------------------------------------------------------
-bool GetFrameBufferClipRect(Recti& out)
-{
-    assert(g_window);
-    GLint cliprect[4];
-    glGetIntegerv(GL_SCISSOR_BOX, cliprect);
-    out.ul.x = cliprect[0];
-    out.ul.y = cliprect[1] - g_window_height + cliprect[3];
-    out.lr.x = (cliprect[0] + cliprect[2]) - 1;
-    out.lr.y = (out.ul.y + cliprect[3]) - 1;
-    return true;
-}
-
-//-----------------------------------------------------------------
-void SetFrameBufferClipRect(const Recti& clip)
-{
-    assert(g_window);
-    glScissor(clip.ul.x, (g_window_height - clip.ul.y) - clip.getHeight(), clip.getWidth(), clip.getHeight());
+    return Texture::Create(gl_texture, tex_width, tex_height, width, height);
 }
 
 //-----------------------------------------------------------------
 void DrawPoint(const Vec2i& pos, const RGBA& color)
 {
-    assert(g_window);
+    assert(g_Window);
 
     glBegin(GL_POINTS);
 
@@ -337,7 +330,7 @@ void DrawPoint(const Vec2i& pos, const RGBA& color)
 //-----------------------------------------------------------------
 void DrawLine(Vec2i pos[2], RGBA col[2])
 {
-    assert(g_window);
+    assert(g_Window);
 
     glBegin(GL_LINES);
 
@@ -353,7 +346,7 @@ void DrawLine(Vec2i pos[2], RGBA col[2])
 //-----------------------------------------------------------------
 void DrawTriangle(Vec2i pos[3], RGBA col[3])
 {
-    assert(g_window);
+    assert(g_Window);
 
     glBegin(GL_TRIANGLES);
 
@@ -372,7 +365,7 @@ void DrawTriangle(Vec2i pos[3], RGBA col[3])
 //-----------------------------------------------------------------
 void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], const RGBA& mask)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(texture);
 
     Texture* t = (Texture*)texture;
@@ -399,7 +392,7 @@ void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], co
 //-----------------------------------------------------------------
 void DrawRect(const Recti& rect, RGBA col[4])
 {
-    assert(g_window);
+    assert(g_Window);
 
     if (!rect.isValid()) {
         return;
@@ -425,7 +418,7 @@ void DrawRect(const Recti& rect, RGBA col[4])
 //-----------------------------------------------------------------
 void DrawImage(ITexture* image, const Vec2i& pos, const RGBA& mask)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(image);
 
     Texture* t = (Texture*)image;
@@ -455,7 +448,7 @@ void DrawImage(ITexture* image, const Vec2i& pos, const RGBA& mask)
 //-----------------------------------------------------------------
 void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, const RGBA& mask)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(image);
 
     if (!src_rect.isValid()) {
@@ -491,7 +484,7 @@ void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, cons
 //-----------------------------------------------------------------
 void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(texture);
 
     Texture* t = (Texture*)texture;
@@ -521,7 +514,7 @@ void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask)
 //-----------------------------------------------------------------
 void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], const RGBA& mask)
 {
-    assert(g_window);
+    assert(g_Window);
     assert(texture);
 
     if (!src_rect.isValid()) {
@@ -575,12 +568,12 @@ bool InitVideo(const Log& log)
 //-----------------------------------------------------------------
 void DeinitVideo()
 {
-    if (g_window) {
-        SDL_GL_DeleteContext(g_context); // if a window is open, assume a OpenGL context was created as well
-        SDL_DestroyWindow(g_window);
-        g_window        = 0;
-        g_window_width  = 0;
-        g_window_height = 0;
+    if (g_Window) {
+        SDL_GL_DeleteContext(g_GLContext); // if a window is open, assume a OpenGL context was created as well
+        SDL_DestroyWindow(g_Window);
+        g_Window        = 0;
+        g_WindowWidth  = 0;
+        g_WindowHeight = 0;
     }
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }

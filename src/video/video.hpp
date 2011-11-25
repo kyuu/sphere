@@ -21,13 +21,13 @@ bool SetWindowFullscreen(bool fullscreen);
 const char* GetWindowTitle();
 void SetWindowTitle(const char* title);
 void SetWindowIcon(Canvas* canvas);
-void SwapFrameBuffers();
-bool GetFrameBufferClipRect(Recti& out);
-void SetFrameBufferClipRect(const Recti& clip);
+void ShowFrame();
+bool GetFrameScissor(Recti& scissor);
+void SetFrameScissor(const Recti& scissor);
 ITexture* CreateTexture(Canvas* pixels);
-ITexture* CloneFrameBufferSection(const Recti& section);
+ITexture* CloneFrame(Recti* section = 0);
 
-// 2D rendering
+// rendering
 void DrawPoint(const Vec2i& pos, const RGBA& col);
 void DrawLine(Vec2i pos[2], RGBA col[2]);
 void DrawTriangle(Vec2i pos[3], RGBA col[3]);

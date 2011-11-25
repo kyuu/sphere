@@ -3195,55 +3195,54 @@ static SQInteger script_SetWindowIcon(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// SwapFrameBuffers()
-static SQInteger script_SwapFrameBuffers(HSQUIRRELVM v)
+// ShowFrame()
+static SQInteger script_ShowFrame(HSQUIRRELVM v)
 {
     if (!IsWindowOpen()) {
         THROW_ERROR("Invalid video state")
     }
-    SwapFrameBuffers();
+    ShowFrame();
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// GetFrameBufferClipRect()
-static SQInteger script_GetFrameBufferClipRect(HSQUIRRELVM v)
+// GetFrameScissor()
+static SQInteger script_GetFrameScissor(HSQUIRRELVM v)
 {
     if (!IsWindowOpen()) {
         THROW_ERROR("Invalid video state")
     }
-    Recti clip_rect;
-    if (!GetFrameBufferClipRect(clip_rect)) {
-        THROW_ERROR("Could not get frame buffer clipping rectangle")
+    Recti scissor;
+    if (!GetFrameScissor(scissor)) {
+        THROW_ERROR("Could not get frame scissor")
     }
-    RET_RECT(clip_rect)
+    RET_RECT(scissor)
 }
 
 //-----------------------------------------------------------------
-// SetFrameBufferClipRect(clip_rect)
-static SQInteger script_SetFrameBufferClipRect(HSQUIRRELVM v)
+// SetFrameScissor(scissor)
+static SQInteger script_SetFrameScissor(HSQUIRRELVM v)
 {
+    CHECK_NARGS(1)
+    GET_ARG_RECT(1, scissor)
     if (!IsWindowOpen()) {
         THROW_ERROR("Invalid video state")
     }
-    CHECK_NARGS(1)
-    GET_ARG_RECT(1, clip_rect)
-    SetFrameBufferClipRect(*clip_rect);
+    SetFrameScissor(*scissor);
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// CloneFrameBufferSection(section)
-static SQInteger script_CloneFrameBufferSection(HSQUIRRELVM v)
+// CloneFrame([section])
+static SQInteger script_CloneFrame(HSQUIRRELVM v)
 {
+    GET_OPTARG_RECT(1, section)
     if (!IsWindowOpen()) {
         THROW_ERROR("Invalid video state")
     }
-    CHECK_NARGS(1)
-    GET_ARG_RECT(1, section)
-    TexturePtr texture = CloneFrameBufferSection(*section);
+    TexturePtr texture = CloneFrame(section);
     if (!texture) {
-        THROW_ERROR("Could not clone frame buffer section")
+        THROW_ERROR("Could not clone frame")
     }
     RET_TEXTURE(texture.get())
 }
@@ -3481,10 +3480,10 @@ static ScriptFuncReg script_video_functions[] = {
     {"GetWindowTitle",              "GetWindowTitle",           script_GetWindowTitle           },
     {"SetWindowTitle",              "SetWindowTitle",           script_SetWindowTitle           },
     {"SetWindowIcon",               "SetWindowIcon",            script_SetWindowIcon            },
-    {"SwapFrameBuffers",            "SwapFrameBuffers",         script_SwapFrameBuffers         },
-    {"GetFrameBufferClipRect",      "GetFrameBufferClipRect",   script_GetFrameBufferClipRect   },
-    {"SetFrameBufferClipRect",      "SetFrameBufferClipRect",   script_SetFrameBufferClipRect   },
-    {"CloneFrameBufferSection",     "CloneFrameBufferSection",  script_CloneFrameBufferSection  },
+    {"ShowFrame",                   "ShowFrame",                script_ShowFrame                },
+    {"GetFrameScissor",             "GetFrameScissor",          script_GetFrameScissor          },
+    {"SetFrameScissor",             "SetFrameScissor",          script_SetFrameScissor          },
+    {"CloneFrame",                  "CloneFrame",               script_CloneFrame               },
     {"DrawPoint",                   "DrawPoint",                script_DrawPoint                },
     {"DrawLine",                    "DrawLine",                 script_DrawLine                 },
     {"DrawTriangle",                "DrawTriangle",             script_DrawTriangle             },
