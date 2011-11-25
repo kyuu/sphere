@@ -4263,81 +4263,77 @@ static SQInteger script_GetJoystickHat(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// HasJoystickForceFeedback(joy)
-static SQInteger script_HasJoystickForceFeedback(HSQUIRRELVM v)
+// IsJoystickHaptic(joy)
+static SQInteger script_IsJoystickHaptic(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_INT(1, joy)
-    RET_BOOL(HasJoystickForceFeedback(joy))
+    RET_BOOL(IsJoystickHaptic(joy))
 }
 
 //-----------------------------------------------------------------
-// UploadJoystickForceEffect(joy, duration, startLevel [, endLevel = startLevel])
-static SQInteger script_UploadJoystickForceEffect(HSQUIRRELVM v)
+// CreateJoystickForce(joy, strength, duration)
+static SQInteger script_CreateJoystickForce(HSQUIRRELVM v)
 {
-    CHECK_MIN_NARGS(3)
+    CHECK_NARGS(3)
     GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, duration)
-    GET_ARG_INT(3, startLevel)
-    GET_OPTARG_INT(4, endLevel, startLevel)
-    if (startLevel < -100 || startLevel > 100) {
-        THROW_ERROR("Invalid start level")
+    GET_ARG_INT(2, strength)
+    GET_ARG_INT(3, duration)
+    if (strength < 0 || strength > 100) {
+        THROW_ERROR("Invalid strength")
     }
-    if (endLevel < -100 || endLevel > 100) {
-        THROW_ERROR("Invalid end level")
+    int force = CreateJoystickForce(joy, strength, duration);
+    if (force < 0) {
+        THROW_ERROR("Could not create joystick force")
     }
-    int effect_id = UploadJoystickForceEffect(joy, duration, startLevel, endLevel);
-    if (effect_id < 0) {
-        THROW_ERROR("Could not upload joystick force effect")
-    }
-    RET_INT(effect_id)
+    RET_INT(force)
 }
 
 //-----------------------------------------------------------------
-// PlayJoystickForceEffect(joy, effect [, times = 1])
-static SQInteger script_PlayJoystickForceEffect(HSQUIRRELVM v)
+// ApplyJoystickForce(joy, force [, times = 1])
+static SQInteger script_ApplyJoystickForce(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(2)
     GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, effect)
+    GET_ARG_INT(2, force)
     GET_OPTARG_INT(3, times, 1)
-    if (!PlayJoystickForceEffect(joy, effect, times)) {
-        THROW_ERROR("Could not play joystick force effect")
+    if (!ApplyJoystickForce(joy, force, times)) {
+        THROW_ERROR("Could not apply joystick force")
     }
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// StopJoystickForceEffect(joy, effect)
-static SQInteger script_StopJoystickForceEffect(HSQUIRRELVM v)
+// StopJoystickForce(joy, force)
+static SQInteger script_StopJoystickForce(HSQUIRRELVM v)
 {
     CHECK_NARGS(2)
     GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, effect)
-    if (!StopJoystickForceEffect(joy, effect)) {
-        THROW_ERROR("Could not stop joystick force effect")
+    GET_ARG_INT(2, force)
+    if (!StopJoystickForce(joy, force)) {
+        THROW_ERROR("Could not stop joystick force")
     }
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// StopAllJoystickForceEffects(joy)
-static SQInteger script_StopAllJoystickForceEffects(HSQUIRRELVM v)
+// StopAllJoystickForces(joy)
+static SQInteger script_StopAllJoystickForces(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_INT(1, joy)
-    StopAllJoystickForceEffects(joy);
+    StopAllJoystickForces(joy);
     RET_VOID()
 }
 
 //-----------------------------------------------------------------
-// RemoveJoystickForceEffect(joy, effect)
-static SQInteger script_RemoveJoystickForceEffect(HSQUIRRELVM v)
+// DestroyJoystickForce(joy, force)
+static SQInteger script_DestroyJoystickForce(HSQUIRRELVM v)
 {
     CHECK_NARGS(2)
     GET_ARG_INT(1, joy)
-    GET_ARG_INT(2, effect)
-    RemoveJoystickForceEffect(joy, effect);
+    GET_ARG_INT(2, force)
+    DestroyJoystickForce(joy, force);
     RET_VOID()
 }
 
@@ -4359,12 +4355,12 @@ static ScriptFuncReg script_input_functions[] = {
     {"IsJoystickButtonDown",        "IsJoystickButtonDown",         script_IsJoystickButtonDown         },
     {"GetJoystickAxis",             "GetJoystickAxis",              script_GetJoystickAxis              },
     {"GetJoystickHat",              "GetJoystickHat",               script_GetJoystickHat               },
-    {"HasJoystickForceFeedback",    "HasJoystickForceFeedback",     script_HasJoystickForceFeedback     },
-    {"UploadJoystickForceEffect",   "UploadJoystickForceEffect",    script_UploadJoystickForceEffect    },
-    {"PlayJoystickForceEffect",     "PlayJoystickForceEffect",      script_PlayJoystickForceEffect      },
-    {"StopJoystickForceEffect",     "StopJoystickForceEffect",      script_StopJoystickForceEffect      },
-    {"StopAllJoystickForceEffects", "StopAllJoystickForceEffects",  script_StopAllJoystickForceEffects  },
-    {"RemoveJoystickForceEffect",   "RemoveJoystickForceEffect",    script_RemoveJoystickForceEffect    },
+    {"IsJoystickHaptic",            "IsJoystickHaptic",             script_IsJoystickHaptic             },
+    {"CreateJoystickForce",         "CreateJoystickForce",          script_CreateJoystickForce          },
+    {"ApplyJoystickForce",          "ApplyJoystickForce",           script_ApplyJoystickForce           },
+    {"StopJoystickForce",           "StopJoystickForce",            script_StopJoystickForce            },
+    {"StopAllJoystickForces",       "StopAllJoystickForces",        script_StopAllJoystickForces        },
+    {"DestroyJoystickForce",        "DestroyJoystickForce",         script_DestroyJoystickForce         },
     {0,0}
 };
 

@@ -31,12 +31,12 @@ int  GetJoystickAxis(int joy, int axis);
 int  GetJoystickHat(int joy, int hat);
 
 // force feedback
-bool HasJoystickForceFeedback(int joy);
-int  UploadJoystickForceEffect(int joy, int duration, int startLevel, int endLevel);
-bool PlayJoystickForceEffect(int joy, int effect, int times = 1);
-bool StopJoystickForceEffect(int joy, int effect);
-bool StopAllJoystickForceEffects(int joy);
-void RemoveJoystickForceEffect(int joy, int effect);
+bool IsJoystickHaptic(int joy);
+int  CreateJoystickForce(int joy, int strength, int duration);
+bool ApplyJoystickForce(int joy, int force, int times = 1);
+bool StopJoystickForce(int joy, int force);
+bool StopAllJoystickForces(int joy);
+void DestroyJoystickForce(int joy, int force);
 
 
 #endif

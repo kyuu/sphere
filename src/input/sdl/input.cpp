@@ -859,7 +859,7 @@ int GetJoystickHat(int joy, int hat)
 }
 
 //-----------------------------------------------------------------
-bool HasJoystickForceFeedback(int joy)
+bool IsJoystickHaptic(int joy)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size()) {
         return g_Joysticks[joy].haptic != 0;
@@ -868,23 +868,15 @@ bool HasJoystickForceFeedback(int joy)
 }
 
 //-----------------------------------------------------------------
-int UploadJoystickForceEffect(int joy, int duration, int startLevel, int endLevel)
+int CreateJoystickForce(int joy, int strength, int duration)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
         SDL_HapticEffect effect;
         memset(&effect, 0, sizeof(SDL_HapticEffect));
-        if (startLevel == endLevel) {
-            effect.constant.type             = SDL_HAPTIC_CONSTANT;
-            effect.constant.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
-            effect.constant.level            = (Sint16)(startLevel * 327);
-            effect.constant.direction.type   = SDL_HAPTIC_CARTESIAN;
-        } else {
-            effect.ramp.type             = SDL_HAPTIC_RAMP;
-            effect.ramp.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
-            effect.ramp.start            = (Sint16)(startLevel * 327);
-            effect.ramp.end              = (Sint16)(endLevel * 327);
-            effect.ramp.direction.type   = SDL_HAPTIC_CARTESIAN;
-        }
+        effect.constant.type             = SDL_HAPTIC_CONSTANT;
+        effect.constant.length           = (duration < 0 ? SDL_HAPTIC_INFINITY : (Uint32)duration);
+        effect.constant.level            = (Sint16)(strength * 327.67);
+        effect.constant.direction.type   = SDL_HAPTIC_CARTESIAN;
         int effect_id = SDL_HapticNewEffect(g_Joysticks[joy].haptic, &effect);
         if (effect_id >= 0) {
             return effect_id;
@@ -894,26 +886,26 @@ int UploadJoystickForceEffect(int joy, int duration, int startLevel, int endLeve
 }
 
 //-----------------------------------------------------------------
-bool PlayJoystickForceEffect(int joy, int effect, int times)
+bool ApplyJoystickForce(int joy, int force, int times)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
         Uint32 iters = (times < 0 ? SDL_HAPTIC_INFINITY : times);
-        return SDL_HapticRunEffect(g_Joysticks[joy].haptic, effect, iters) == 0;
+        return SDL_HapticRunEffect(g_Joysticks[joy].haptic, force, iters) == 0;
     }
     return false;
 }
 
 //-----------------------------------------------------------------
-bool StopJoystickForceEffect(int joy, int effect)
+bool StopJoystickForce(int joy, int force)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
-        return SDL_HapticStopEffect(g_Joysticks[joy].haptic, effect) == 0;
+        return SDL_HapticStopEffect(g_Joysticks[joy].haptic, force) == 0;
     }
     return false;
 }
 
 //-----------------------------------------------------------------
-bool StopAllJoystickForceEffects(int joy)
+bool StopAllJoystickForces(int joy)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
         return SDL_HapticStopAll(g_Joysticks[joy].haptic) == 0;
@@ -922,10 +914,10 @@ bool StopAllJoystickForceEffects(int joy)
 }
 
 //-----------------------------------------------------------------
-void RemoveJoystickForceEffect(int joy, int effect)
+void DestroyJoystickForce(int joy, int force)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size() && g_Joysticks[joy].haptic) {
-        SDL_HapticDestroyEffect(g_Joysticks[joy].haptic, effect);
+        SDL_HapticDestroyEffect(g_Joysticks[joy].haptic, force);
     }
 }
 
