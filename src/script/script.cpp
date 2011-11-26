@@ -2362,6 +2362,24 @@ static SQInteger script_canvas_fill(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Canvas.flipHorizontally()
+static SQInteger script_canvas_flipHorizontally(HSQUIRRELVM v)
+{
+    SETUP_CANVAS_OBJECT()
+    This->flipHorizontally();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// Canvas.flipVertically()
+static SQInteger script_canvas_flipVertically(HSQUIRRELVM v)
+{
+    SETUP_CANVAS_OBJECT()
+    This->flipVertically();
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
 // Canvas._get(index)
 static SQInteger script_canvas__get(HSQUIRRELVM v)
 {
@@ -2567,6 +2585,8 @@ static ScriptFuncReg script_canvas_methods[] = {
     {"setPixelByIndex",     "Canvas.setPixelByIndex",   script_canvas_setPixelByIndex   },
     {"resize",              "Canvas.resize",            script_canvas_resize            },
     {"fill",                "Canvas.fill",              script_canvas_fill              },
+    {"flipHorizontally",    "Canvas.flipHorizontally",  script_canvas_flipHorizontally  },
+    {"flipVertically",      "Canvas.flipVertically",    script_canvas_flipVertically    },
     {"_get",                "Canvas._get",              script_canvas__get              },
     {"_set",                "Canvas._set",              script_canvas__set              },
     {"_typeof",             "Canvas._typeof",           script_canvas__typeof           },
