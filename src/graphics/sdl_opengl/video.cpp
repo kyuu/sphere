@@ -106,9 +106,6 @@ bool OpenWindow(int width, int height, bool fullscreen)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // enable 2D texturization
-    glEnable(GL_TEXTURE_2D);
-
     // get max texture size
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &g_MaxTextureSize);
 
@@ -280,38 +277,29 @@ ITexture* CreateTexture(Canvas* pixels)
 }
 
 //-----------------------------------------------------------------
-ITexture* CloneFrame(Recti* section)
+Canvas* CloneFrame(Recti* section)
 {
     assert(g_Window);
 
-    if (!Recti(0, 0, g_WindowWidth - 1, g_WindowHeight - 1).contains(*section)) {
-        return 0;
+    int x = 0;
+    int y = 0;
+    int w = g_WindowWidth;
+    int h = g_WindowHeight;
+
+    if (section) {
+        if (!section->isValid() || !Recti(0, 0, g_WindowWidth - 1, g_WindowHeight - 1).contains(*section)) {
+            return 0;
+        }
+        x = section->getX();
+        y = g_WindowHeight - (section->getY() + section->getHeight());
+        w = section->getWidth();
+        h = section->getHeight();
     }
 
-    int x = section->getX();
-    int y = section->getY();
-    int width  = section->getWidth();
-    int height = section->getHeight();
-
-    double log2_width  = log10((double)width)  / log10(2.0);
-    double log2_height = log10((double)height) / log10(2.0);
-
-    int tex_width  = width;
-    int tex_height = height;
-
-    if (log2_width != floor(log2_width)) {
-        tex_width = 1 << (int)ceil(log2_width);
-    }
-    if (log2_height != floor(log2_height)) {
-        tex_height = 1 << (int)ceil(log2_height);
-    }
-
-    GLuint gl_texture;
-    glGenTextures(1, &gl_texture);
-    glBindTexture(GL_TEXTURE_2D, gl_texture);
-    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x, y, tex_width, tex_height, 0);
-
-    return Texture::Create(gl_texture, tex_width, tex_height, width, height);
+    CanvasPtr canvas = Canvas::Create(w, h);
+    glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, canvas->getPixels());
+    canvas->flipHorizontally();
+    return canvas.release();
 }
 
 //-----------------------------------------------------------------
@@ -404,13 +392,13 @@ void DrawRect(const Recti& rect, RGBA col[4])
     glVertex2i(rect.ul.x, rect.ul.y);
 
     glColor4ubv((GLubyte*)&col[1]);
-    glVertex2i(rect.lr.x, rect.ul.y);
+    glVertex2i(rect.lr.x + 1, rect.ul.y);
 
     glColor4ubv((GLubyte*)&col[2]);
-    glVertex2i(rect.lr.x, rect.lr.y);
+    glVertex2i(rect.lr.x + 1, rect.lr.y + 1);
 
     glColor4ubv((GLubyte*)&col[3]);
-    glVertex2i(rect.ul.x, rect.lr.y);
+    glVertex2i(rect.ul.x, rect.lr.y + 1);
 
     glEnd();
 }
@@ -425,9 +413,9 @@ void DrawImage(ITexture* image, const Vec2i& pos, const RGBA& mask)
     GLfloat  w = (GLfloat)t->getWidth()  / (GLfloat)t->getTexWidth();
     GLfloat  h = (GLfloat)t->getHeight() / (GLfloat)t->getTexHeight();
 
+    glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, t->getTexID());
     glColor4ubv((GLubyte*)&mask);
-
     glBegin(GL_QUADS);
 
     glTexCoord2f(0, 0);
@@ -443,6 +431,7 @@ void DrawImage(ITexture* image, const Vec2i& pos, const RGBA& mask)
     glVertex2i(pos.x, pos.y + t->getHeight());
 
     glEnd();
+    glDisable(GL_TEXTURE_2D);
 }
 
 //-----------------------------------------------------------------
@@ -461,6 +450,7 @@ void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, cons
     GLfloat  w = (GLfloat)src_rect.getWidth()  / (GLfloat)t->getTexWidth();
     GLfloat  h = (GLfloat)src_rect.getHeight() / (GLfloat)t->getTexHeight();
 
+    glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, t->getTexID());
     glColor4ubv((GLubyte*)&mask);
 
@@ -479,6 +469,7 @@ void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, cons
     glVertex2i(pos.x, pos.y + src_rect.getHeight() - 1);
 
     glEnd();
+    glDisable(GL_TEXTURE_2D);
 }
 
 //-----------------------------------------------------------------
@@ -491,6 +482,7 @@ void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask)
     GLfloat  w = (GLfloat)t->getWidth()  / (GLfloat)t->getTexWidth();
     GLfloat  h = (GLfloat)t->getHeight() / (GLfloat)t->getTexHeight();
 
+    glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, t->getTexID());
     glColor4ubv((GLubyte*)&mask);
 
@@ -509,6 +501,7 @@ void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask)
     glVertex2i(pos[3].x, pos[3].y);
 
     glEnd();
+    glDisable(GL_TEXTURE_2D);
 }
 
 //-----------------------------------------------------------------
@@ -527,6 +520,7 @@ void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], co
     GLfloat  w = (GLfloat)src_rect.getWidth()  / (GLfloat)t->getTexWidth();
     GLfloat  h = (GLfloat)src_rect.getHeight() / (GLfloat)t->getTexHeight();
 
+    glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, t->getTexID());
     glColor4ubv((GLubyte*)&mask);
 
@@ -545,6 +539,7 @@ void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], co
     glVertex2i(pos[3].x, pos[3].y);
 
     glEnd();
+    glDisable(GL_TEXTURE_2D);
 }
 
 //-----------------------------------------------------------------

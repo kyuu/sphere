@@ -137,6 +137,42 @@ Canvas::fill(const RGBA& color)
 }
 
 //-----------------------------------------------------------------
+void
+Canvas::flipHorizontally()
+{
+    assert(sizeof(RGBA) == sizeof(u32));
+    for (int y = 0; y < _height / 2; y++) {
+        u32* a = ((u32*)_pixels) + _width * y;
+        u32* b = ((u32*)_pixels) + _width * (_height - (y + 1));
+        for (int x = 0; x < _width; x++) {
+            u32 temp = *a;
+            *a = *b;
+            *b = temp;
+            a++;
+            b++;
+        }
+    }
+}
+
+//-----------------------------------------------------------------
+void
+Canvas::flipVertically()
+{
+    assert(sizeof(RGBA) == sizeof(u32));
+    for (int y = 0; y < _height; y++) {
+        u32* a =  ((u32*)_pixels) + _width * y;
+        u32* b = (((u32*)_pixels) + _width * y) + (_width - 1);
+        for (int x = 0; x < _width / 2; x++) {
+            u32 temp = *a;
+            *a = *b;
+            *b = temp;
+            a++;
+            b--;
+        }
+    }
+}
+
+//-----------------------------------------------------------------
 bool
 Canvas::setClipRect(const Recti& clipRect)
 {

@@ -25,7 +25,7 @@ void ShowFrame();
 bool GetFrameScissor(Recti& scissor);
 void SetFrameScissor(const Recti& scissor);
 ITexture* CreateTexture(Canvas* pixels);
-ITexture* CloneFrame(Recti* section = 0);
+Canvas* CloneFrame(Recti* section = 0);
 
 // rendering
 void DrawPoint(const Vec2i& pos, const RGBA& col);

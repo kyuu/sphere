@@ -29,6 +29,8 @@ public:
     void  setPixelByIndex(int index, const RGBA& color);
     void  resize(int width, int height);
     void  fill(const RGBA& color);
+    void  flipHorizontally();
+    void  flipVertically();
     const Recti& getClipRect() const;
     bool  setClipRect(const Recti& clipRect);
 

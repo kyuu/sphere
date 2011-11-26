@@ -3141,11 +3141,11 @@ static SQInteger script_CloneFrame(HSQUIRRELVM v)
     if (!IsWindowOpen()) {
         THROW_ERROR("Invalid video state")
     }
-    TexturePtr texture = CloneFrame(section);
-    if (!texture) {
+    CanvasPtr canvas = CloneFrame(section);
+    if (!canvas) {
         THROW_ERROR("Could not clone frame")
     }
-    RET_TEXTURE(texture.get())
+    RET_CANVAS(canvas.get())
 }
 
 //-----------------------------------------------------------------
