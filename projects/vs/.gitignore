@@ -3,7 +3,6 @@
 *.suo
 *.user
 *.opensdf
-*.filters
 Release/*
 Debug/*
 */Release/*

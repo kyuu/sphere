@@ -11,26 +11,26 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\src\audio\audiere\audio.cpp" />
-    <ClCompile Include="..\..\..\src\audio\audiere\Sound.cpp" />
-    <ClCompile Include="..\..\..\src\audio\audiere\SoundEffect.cpp" />
-    <ClCompile Include="..\..\..\src\compression\ZStream.cpp" />
     <ClCompile Include="..\..\..\src\error.cpp" />
-    <ClCompile Include="..\..\..\src\filesystem\boost\filesystem.cpp" />
-    <ClCompile Include="..\..\..\src\filesystem\File.cpp" />
     <ClCompile Include="..\..\..\src\graphics\Canvas.cpp" />
-    <ClCompile Include="..\..\..\src\image\corona\image.cpp" />
+    <ClCompile Include="..\..\..\src\graphics\corona\image.cpp" />
+    <ClCompile Include="..\..\..\src\graphics\sdl_opengl\Texture.cpp" />
+    <ClCompile Include="..\..\..\src\graphics\sdl_opengl\video.cpp" />
     <ClCompile Include="..\..\..\src\IniFile.cpp" />
     <ClCompile Include="..\..\..\src\input\sdl\input.cpp" />
     <ClCompile Include="..\..\..\src\io\Blob.cpp" />
+    <ClCompile Include="..\..\..\src\io\boost\filesystem.cpp" />
+    <ClCompile Include="..\..\..\src\io\data.cpp" />
     <ClCompile Include="..\..\..\src\io\endian.cpp" />
-    <ClCompile Include="..\..\..\src\io\io.cpp" />
+    <ClCompile Include="..\..\..\src\io\File.cpp" />
     <ClCompile Include="..\..\..\src\Log.cpp" />
     <ClCompile Include="..\..\..\src\main.cpp" />
     <ClCompile Include="..\..\..\src\script\script.cpp" />
+    <ClCompile Include="..\..\..\src\sound\audiere\audio.cpp" />
+    <ClCompile Include="..\..\..\src\sound\audiere\Sound.cpp" />
+    <ClCompile Include="..\..\..\src\sound\audiere\SoundEffect.cpp" />
     <ClCompile Include="..\..\..\src\system\win32\system.cpp" />
-    <ClCompile Include="..\..\..\src\video\sdl_opengl\Texture.cpp" />
-    <ClCompile Include="..\..\..\src\video\sdl_opengl\video.cpp" />
+    <ClCompile Include="..\..\..\src\util\ZStream.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\test.rc" />

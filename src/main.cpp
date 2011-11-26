@@ -5,10 +5,10 @@
 #include "version.hpp"
 #include "Log.hpp"
 #include "Config.hpp"
-#include "filesystem/filesystem.hpp"
 #include "system/system.hpp"
-#include "video/video.hpp"
-#include "audio/audio.hpp"
+#include "io/filesystem.hpp"
+#include "graphics/video.hpp"
+#include "sound/audio.hpp"
 #include "input/input.hpp"
 #include "script/script.hpp"
 

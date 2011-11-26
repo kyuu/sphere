@@ -2,7 +2,7 @@
 #include <cassert>
 #include "../common/platform.hpp"
 #include "endian.hpp"
-#include "io.hpp"
+#include "data.hpp"
 
 
 //-----------------------------------------------------------------

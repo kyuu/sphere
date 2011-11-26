@@ -1,5 +1,5 @@
-#ifndef IO_HPP
-#define IO_HPP
+#ifndef DATA_HPP
+#define DATA_HPP
 
 #include "../common/types.hpp"
 #include "IStream.hpp"

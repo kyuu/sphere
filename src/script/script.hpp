@@ -11,11 +11,11 @@
 #include "../io/IFile.hpp"
 #include "../io/Blob.hpp"
 #include "../graphics/Canvas.hpp"
-#include "../video/ITexture.hpp"
-#include "../audio/ISound.hpp"
-#include "../audio/ISoundEffect.hpp"
+#include "../graphics/ITexture.hpp"
+#include "../sound/ISound.hpp"
+#include "../sound/ISoundEffect.hpp"
 #include "../input/joystick.hpp"
-#include "../compression/ZStream.hpp"
+#include "../util/ZStream.hpp"
 
 
 HSQUIRRELVM GetVM();

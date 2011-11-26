@@ -8,16 +8,14 @@
 #include <sqstdmath.h>
 #include <sqstdstring.h>
 #include "../common/ArrayPtr.hpp"
-#include "../Log.hpp"
 #include "../error.hpp"
-#include "../io/endian.hpp"
-#include "../io/io.hpp"
-#include "../io/Blob.hpp"
-#include "../image/image.hpp"
 #include "../system/system.hpp"
-#include "../filesystem/filesystem.hpp"
-#include "../video/video.hpp"
-#include "../audio/audio.hpp"
+#include "../io/endian.hpp"
+#include "../io/data.hpp"
+#include "../io/filesystem.hpp"
+#include "../graphics/image.hpp"
+#include "../graphics/video.hpp"
+#include "../sound/audio.hpp"
 #include "../input/input.hpp"
 #include "script.hpp"
 #include "typetags.hpp"
@@ -159,7 +157,7 @@ SQRESULT ThrowError(const char* format, ...)
  *                                                                *
  ******************************************************************/
 
-/***************************** RECT *******************************/
+/************************* RECT OBJECT ****************************/
 
 #define SETUP_RECT_OBJECT() \
     Recti* This = 0; \
@@ -462,7 +460,7 @@ static void init_rect_class()
     sq_poptop(g_VM); // pop class
 }
 
-/***************************** VEC2 *******************************/
+/************************* VEC2 OBJECT ****************************/
 
 #define SETUP_VEC2_OBJECT() \
     Vec2i* This = 0; \
@@ -936,7 +934,7 @@ static void register_core_api()
  *                                                                *
  ******************************************************************/
 
-/***************************** STREAM *****************************/
+/************************* STREAM INTERFACE ***********************/
 
 #define SETUP_STREAM_OBJECT() \
     IStream* This = 0; \
@@ -1820,10 +1818,272 @@ static void init_blob_class()
     sq_poptop(g_VM); // pop class
 }
 
+/*************************** FILE OBJECT **************************/
+
+#define SETUP_FILE_OBJECT() \
+    IFile* This = 0; \
+    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) { \
+        THROW_ERROR("Invalid type of environment object, expected a File instance") \
+    }
+
+//-----------------------------------------------------------------
+static SQInteger script_file_destructor(SQUserPointer p, SQInteger size)
+{
+    assert(p);
+    ((IFile*)p)->drop();
+    return 0;
+}
+
+//-----------------------------------------------------------------
+// File.getName()
+static SQInteger script_file_getName(HSQUIRRELVM v)
+{
+    SETUP_FILE_OBJECT()
+    RET_STRING(This->getName().c_str())
+}
+
+//-----------------------------------------------------------------
+// File._typeof()
+static SQInteger script_file__typeof(HSQUIRRELVM v)
+{
+    SETUP_FILE_OBJECT()
+    RET_STRING("File")
+}
+
+//-----------------------------------------------------------------
+// File._tostring()
+static SQInteger script_file__tostring(HSQUIRRELVM v)
+{
+    SETUP_FILE_OBJECT()
+    std::ostringstream oss;
+    oss << "<File instance at " << This;
+    oss << " (filename = ";
+    if (This->isOpen()) {
+        oss << "\"" << This->getName() << "\"";
+    } else {
+        oss << "N/A";
+    }
+    oss << ")>";
+    RET_STRING(oss.str().c_str())
+}
+
+//-----------------------------------------------------------------
+void CreateFileDerivedClass()
+{
+    sq_pushobject(g_VM, g_FileClass);
+    bool succeeded = SQ_SUCCEEDED(sq_newclass(g_VM, SQTrue));
+    assert(succeeded);
+}
+
+//-----------------------------------------------------------------
+void BindFile(IFile* file)
+{
+    assert(g_FileClass._type == OT_CLASS);
+    assert(file);
+    sq_pushobject(g_VM, g_FileClass); // push file class
+    sq_createinstance(g_VM, -1);
+    sq_remove(g_VM, -2); // pop file class
+    sq_setreleasehook(g_VM, -1, script_file_destructor);
+    sq_setinstanceup(g_VM, -1, (SQUserPointer)file);
+    file->grab(); // grab a new reference
+}
+
+//-----------------------------------------------------------------
+IFile* GetFile(SQInteger idx)
+{
+    SQUserPointer p = 0;
+    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_FILE))) {
+        return (IFile*)p;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_file_methods[] = {
+    {"getName",     "File.getName",     script_file_getName     },
+    {"_typeof",     "File._typeof",     script_file__typeof     },
+    {"_tostring",   "File._tostring",   script_file__tostring   },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptFuncReg script_file_static_methods[] = {
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static ScriptConstReg script_file_constants[] = {
+    {"IN",      IFile::IN       },
+    {"OUT",     IFile::OUT      },
+    {"APPEND",  IFile::APPEND   },
+    {0,0}
+};
+
+//-----------------------------------------------------------------
+static void init_file_class()
+{
+    CreateStreamDerivedClass(); // inherit from Stream
+    sq_newclass(g_VM, SQTrue); // create class
+    sq_settypetag(g_VM, -1, TT_FILE);
+
+    // define methods
+    for (int i = 0; script_file_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_file_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_file_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_file_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQFalse);
+    }
+
+    // define static methods
+    for (int i = 0; script_file_static_methods[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_file_static_methods[i].funcname, -1);
+        sq_newclosure(g_VM, script_file_static_methods[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_file_static_methods[i].debugname);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // define constants
+    for (int i = 0; script_file_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_file_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_file_constants[i].value);
+        sq_newslot(g_VM, -3, SQTrue);
+    }
+
+    // get a strong reference
+    sq_resetobject(&g_FileClass);
+    sq_getstackobj(g_VM, -1, &g_FileClass);
+    sq_addref(g_VM, &g_FileClass);
+
+    sq_poptop(g_VM); // pop class
+}
+
 /*********************** GLOBAL FUNCTIONS *************************/
 
 //-----------------------------------------------------------------
+// OpenFile(filename [, mode = File.IN])
+static SQInteger script_OpenFile(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    GET_OPTARG_INT(2, mode, IFile::IN)
+    if (mode != IFile::IN  &&
+        mode != IFile::OUT &&
+        mode != IFile::APPEND)
+    {
+        THROW_ERROR("Invalid mode")
+    }
+    FilePtr file = OpenFile(filename, mode);
+    if (!file) {
+        THROW_ERROR("Could not open file")
+    }
+    RET_FILE(file.get())
+}
+
+//-----------------------------------------------------------------
+// DoesFileExist(filename)
+static SQInteger script_DoesFileExist(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(DoesFileExist(filename))
+}
+
+//-----------------------------------------------------------------
+// IsRegularFile(filename)
+static SQInteger script_IsRegularFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsRegularFile(filename))
+}
+
+//-----------------------------------------------------------------
+// IsDirectory(filename)
+static SQInteger script_IsDirectory(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_BOOL(IsDirectory(filename))
+}
+
+//-----------------------------------------------------------------
+// GetFileModTime(filename)
+static SQInteger script_GetFileModTime(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    RET_INT(GetFileModTime(filename))
+}
+
+//-----------------------------------------------------------------
+// CreateDirectory(directory)
+static SQInteger script_CreateDirectory(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
+    if (!CreateDirectory(directory)) {
+        THROW_ERROR("Could not create directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// RemoveFile(filename)
+static SQInteger script_RemoveFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    if (!RemoveFile(filename)) {
+        THROW_ERROR("Could not remove file or directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// RenameFile(filenameFrom, filenameTo)
+static SQInteger script_RenameFile(HSQUIRRELVM v)
+{
+    CHECK_NARGS(2)
+    GET_ARG_STRING(1, filenameFrom)
+    GET_ARG_STRING(2, filenameTo)
+    if (!RenameFile(filenameFrom, filenameTo)) {
+        THROW_ERROR("Could not rename file or directory")
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
+// GetFileList(directory)
+static SQInteger script_GetFileList(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, directory)
+    std::vector<std::string> file_list;
+    if (!GetFileList(directory, file_list)) {
+        THROW_ERROR("Could not get file list")
+    }
+    sq_newarray(v, file_list.size());
+    if (file_list.size() > 0) {
+        for (int i = 0; i < (int)file_list.size(); ++i) {
+            sq_pushinteger(v, i);
+            sq_pushstring(v, file_list[i].c_str(), -1);
+            sq_rawset(v, -3);
+        }
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
 static ScriptFuncReg script_io_functions[] = {
+    {"OpenFile",        "OpenFile",         script_OpenFile         },
+    {"DoesFileExist",   "DoesFileExist",    script_DoesFileExist    },
+    {"IsRegularFile",   "IsRegularFile",    script_IsRegularFile    },
+    {"IsDirectory",     "IsDirectory",      script_IsDirectory      },
+    {"GetFileModTime",  "GetFileModTime",   script_GetFileModTime   },
+    {"CreateDirectory", "CreateDirectory",  script_CreateDirectory  },
+    {"RemoveFile",      "RemoveFile",       script_RemoveFile       },
+    {"RenameFile",      "RenameFile",       script_RenameFile       },
+    {"GetFileList",     "GetFileList",      script_GetFileList      },
     {0,0}
 };
 
@@ -1837,7 +2097,8 @@ static void register_io_api()
 {
     // init classes
     init_stream_class(); // Stream must be initialized before any class that inherits from it
-    init_blob_class();
+    init_blob_class(); // requires Stream to be initialized first
+    init_file_class(); // requires Stream to be initialized first
 
     // register classes
     sq_pushstring(g_VM, "Stream", -1);
@@ -1846,6 +2107,10 @@ static void register_io_api()
 
     sq_pushstring(g_VM, "Blob", -1);
     sq_pushobject(g_VM, g_BlobClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
+    sq_pushstring(g_VM, "File", -1);
+    sq_pushobject(g_VM, g_FileClass);
     sq_newslot(g_VM, -3, SQFalse);
 
     // register functions
@@ -1870,7 +2135,7 @@ static void register_io_api()
  *                                                                *
  ******************************************************************/
 
-/**************************** CANVAS *****************************/
+/************************* CANVAS OBJECT **************************/
 
 #define SETUP_CANVAS_OBJECT() \
     Canvas* This = 0; \
@@ -2362,418 +2627,7 @@ static void init_canvas_class()
     sq_poptop(g_VM); // pop class
 }
 
-/*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// CreateColor(red, green, blue [, alpha = 255])
-static SQInteger script_CreateColor(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(3)
-    GET_ARG_INT(1, red)
-    GET_ARG_INT(2, green)
-    GET_ARG_INT(3, blue)
-    GET_OPTARG_INT(4, alpha, 255)
-    RET_INT(RGBA::Pack(red, green, blue, alpha))
-}
-
-//-----------------------------------------------------------------
-// UnpackRed(color)
-static SQInteger script_UnpackRed(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).red)
-}
-
-//-----------------------------------------------------------------
-// UnpackGreen(color)
-static SQInteger script_UnpackGreen(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).green)
-}
-
-//-----------------------------------------------------------------
-// UnpackBlue(color)
-static SQInteger script_UnpackBlue(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).blue)
-}
-
-//-----------------------------------------------------------------
-// UnpackAlpha(color)
-static SQInteger script_UnpackAlpha(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_INT(1, color)
-    RET_INT(RGBA::Unpack((u32)color).alpha)
-}
-
-//-----------------------------------------------------------------
-static ScriptFuncReg script_graphics_functions[] = {
-    {"CreateColor", "CreateColor",  script_CreateColor  },
-    {"UnpackRed",   "UnpackRed",    script_UnpackRed    },
-    {"UnpackGreen", "UnpackGreen",  script_UnpackGreen  },
-    {"UnpackBlue",  "UnpackBlue",   script_UnpackBlue   },
-    {"UnpackAlpha", "UnpackAlpha",  script_UnpackAlpha  },
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static ScriptConstReg script_graphics_constants[] = {
-    {"BLACK",   RGBA::Pack(  0,   0,   0) },
-    {"WHITE",   RGBA::Pack(255, 255, 255) },
-    {"RED",     RGBA::Pack(255,   0,   0) },
-    {"GREEN",   RGBA::Pack(0,   255,   0) },
-    {"BLUE",    RGBA::Pack(0,     0, 255) },
-    {"YELLOW",  RGBA::Pack(255, 255,   0) },
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static void register_graphics_api()
-{
-    // init classes
-    init_canvas_class();
-
-    // register classes
-    sq_pushstring(g_VM, "Canvas", -1);
-    sq_pushobject(g_VM, g_CanvasClass);
-    sq_newslot(g_VM, -3, SQFalse);
-
-    // register functions
-    for (int i = 0; script_graphics_functions[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_graphics_functions[i].funcname, -1);
-        sq_newclosure(g_VM, script_graphics_functions[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_graphics_functions[i].debugname);
-        sq_newslot(g_VM, -3, SQFalse);
-    }
-
-    // register constants
-    for (int i = 0; script_graphics_constants[i].name != 0; i++) {
-        sq_pushstring(g_VM, script_graphics_constants[i].name, -1);
-        sq_pushinteger(g_VM, script_graphics_constants[i].value);
-        sq_newslot(g_VM, -3, SQFalse);
-    }
-}
-
-/******************************************************************
- *                                                                *
- *                          FILESYSTEM                            *
- *                                                                *
- ******************************************************************/
-
-/***************************** FILE *******************************/
-
-#define SETUP_FILE_OBJECT() \
-    IFile* This = 0; \
-    if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_FILE))) { \
-        THROW_ERROR("Invalid type of environment object, expected a File instance") \
-    }
-
-//-----------------------------------------------------------------
-static SQInteger script_file_destructor(SQUserPointer p, SQInteger size)
-{
-    assert(p);
-    ((IFile*)p)->drop();
-    return 0;
-}
-
-//-----------------------------------------------------------------
-// File.getName()
-static SQInteger script_file_getName(HSQUIRRELVM v)
-{
-    SETUP_FILE_OBJECT()
-    RET_STRING(This->getName().c_str())
-}
-
-//-----------------------------------------------------------------
-// File._typeof()
-static SQInteger script_file__typeof(HSQUIRRELVM v)
-{
-    SETUP_FILE_OBJECT()
-    RET_STRING("File")
-}
-
-//-----------------------------------------------------------------
-// File._tostring()
-static SQInteger script_file__tostring(HSQUIRRELVM v)
-{
-    SETUP_FILE_OBJECT()
-    std::ostringstream oss;
-    oss << "<File instance at " << This;
-    oss << " (filename = ";
-    if (This->isOpen()) {
-        oss << "\"" << This->getName() << "\"";
-    } else {
-        oss << "N/A";
-    }
-    oss << ")>";
-    RET_STRING(oss.str().c_str())
-}
-
-//-----------------------------------------------------------------
-void CreateFileDerivedClass()
-{
-    sq_pushobject(g_VM, g_FileClass);
-    bool succeeded = SQ_SUCCEEDED(sq_newclass(g_VM, SQTrue));
-    assert(succeeded);
-}
-
-//-----------------------------------------------------------------
-void BindFile(IFile* file)
-{
-    assert(g_FileClass._type == OT_CLASS);
-    assert(file);
-    sq_pushobject(g_VM, g_FileClass); // push file class
-    sq_createinstance(g_VM, -1);
-    sq_remove(g_VM, -2); // pop file class
-    sq_setreleasehook(g_VM, -1, script_file_destructor);
-    sq_setinstanceup(g_VM, -1, (SQUserPointer)file);
-    file->grab(); // grab a new reference
-}
-
-//-----------------------------------------------------------------
-IFile* GetFile(SQInteger idx)
-{
-    SQUserPointer p = 0;
-    if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_FILE))) {
-        return (IFile*)p;
-    }
-    return 0;
-}
-
-//-----------------------------------------------------------------
-static ScriptFuncReg script_file_methods[] = {
-    {"getName",     "File.getName",     script_file_getName     },
-    {"_typeof",     "File._typeof",     script_file__typeof     },
-    {"_tostring",   "File._tostring",   script_file__tostring   },
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static ScriptFuncReg script_file_static_methods[] = {
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static ScriptConstReg script_file_constants[] = {
-    {"IN",      IFile::IN       },
-    {"OUT",     IFile::OUT      },
-    {"APPEND",  IFile::APPEND   },
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static void init_file_class()
-{
-    CreateStreamDerivedClass(); // inherit from Stream
-    sq_newclass(g_VM, SQTrue); // create class
-    sq_settypetag(g_VM, -1, TT_FILE);
-
-    // define methods
-    for (int i = 0; script_file_methods[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_file_methods[i].funcname, -1);
-        sq_newclosure(g_VM, script_file_methods[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_file_methods[i].debugname);
-        sq_newslot(g_VM, -3, SQFalse);
-    }
-
-    // define static methods
-    for (int i = 0; script_file_static_methods[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_file_static_methods[i].funcname, -1);
-        sq_newclosure(g_VM, script_file_static_methods[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_file_static_methods[i].debugname);
-        sq_newslot(g_VM, -3, SQTrue);
-    }
-
-    // define constants
-    for (int i = 0; script_file_constants[i].name != 0; i++) {
-        sq_pushstring(g_VM, script_file_constants[i].name, -1);
-        sq_pushinteger(g_VM, script_file_constants[i].value);
-        sq_newslot(g_VM, -3, SQTrue);
-    }
-
-    // get a strong reference
-    sq_resetobject(&g_FileClass);
-    sq_getstackobj(g_VM, -1, &g_FileClass);
-    sq_addref(g_VM, &g_FileClass);
-
-    sq_poptop(g_VM); // pop class
-}
-
-/*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// OpenFile(filename [, mode = File.IN])
-static SQInteger script_OpenFile(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    GET_OPTARG_INT(2, mode, IFile::IN)
-    if (mode != IFile::IN  &&
-        mode != IFile::OUT &&
-        mode != IFile::APPEND)
-    {
-        THROW_ERROR("Invalid mode")
-    }
-    FilePtr file = OpenFile(filename, mode);
-    if (!file) {
-        THROW_ERROR("Could not open file")
-    }
-    RET_FILE(file.get())
-}
-
-//-----------------------------------------------------------------
-// DoesFileExist(filename)
-static SQInteger script_DoesFileExist(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(DoesFileExist(filename))
-}
-
-//-----------------------------------------------------------------
-// IsRegularFile(filename)
-static SQInteger script_IsRegularFile(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(IsRegularFile(filename))
-}
-
-//-----------------------------------------------------------------
-// IsDirectory(filename)
-static SQInteger script_IsDirectory(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_BOOL(IsDirectory(filename))
-}
-
-//-----------------------------------------------------------------
-// GetFileModTime(filename)
-static SQInteger script_GetFileModTime(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    RET_INT(GetFileModTime(filename))
-}
-
-//-----------------------------------------------------------------
-// CreateDirectory(directory)
-static SQInteger script_CreateDirectory(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, directory)
-    if (!CreateDirectory(directory)) {
-        THROW_ERROR("Could not create directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// RemoveFile(filename)
-static SQInteger script_RemoveFile(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    if (!RemoveFile(filename)) {
-        THROW_ERROR("Could not remove file or directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// RenameFile(filenameFrom, filenameTo)
-static SQInteger script_RenameFile(HSQUIRRELVM v)
-{
-    CHECK_NARGS(2)
-    GET_ARG_STRING(1, filenameFrom)
-    GET_ARG_STRING(2, filenameTo)
-    if (!RenameFile(filenameFrom, filenameTo)) {
-        THROW_ERROR("Could not rename file or directory")
-    }
-    RET_VOID()
-}
-
-//-----------------------------------------------------------------
-// GetFileList(directory)
-static SQInteger script_GetFileList(HSQUIRRELVM v)
-{
-    CHECK_NARGS(1)
-    GET_ARG_STRING(1, directory)
-    std::vector<std::string> file_list;
-    if (!GetFileList(directory, file_list)) {
-        THROW_ERROR("Could not get file list")
-    }
-    sq_newarray(v, file_list.size());
-    if (file_list.size() > 0) {
-        for (int i = 0; i < (int)file_list.size(); ++i) {
-            sq_pushinteger(v, i);
-            sq_pushstring(v, file_list[i].c_str(), -1);
-            sq_rawset(v, -3);
-        }
-    }
-    return 1;
-}
-
-//-----------------------------------------------------------------
-static ScriptFuncReg script_filesystem_functions[] = {
-    {"OpenFile",        "OpenFile",         script_OpenFile         },
-    {"DoesFileExist",   "DoesFileExist",    script_DoesFileExist    },
-    {"IsRegularFile",   "IsRegularFile",    script_IsRegularFile    },
-    {"IsDirectory",     "IsDirectory",      script_IsDirectory      },
-    {"GetFileModTime",  "GetFileModTime",   script_GetFileModTime   },
-    {"CreateDirectory", "CreateDirectory",  script_CreateDirectory  },
-    {"RemoveFile",      "RemoveFile",       script_RemoveFile       },
-    {"RenameFile",      "RenameFile",       script_RenameFile       },
-    {"GetFileList",     "GetFileList",      script_GetFileList      },
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static ScriptConstReg script_filesystem_constants[] = {
-    {0,0}
-};
-
-//-----------------------------------------------------------------
-static void register_filesystem_api()
-{
-    // init classes
-    init_file_class();
-
-    // register classes
-    sq_pushstring(g_VM, "File", -1);
-    sq_pushobject(g_VM, g_FileClass);
-    sq_newslot(g_VM, -3, SQFalse);
-
-    // register functions
-    for (int i = 0; script_filesystem_functions[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_filesystem_functions[i].funcname, -1);
-        sq_newclosure(g_VM, script_filesystem_functions[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_filesystem_functions[i].debugname);
-        sq_newslot(g_VM, -3, SQFalse);
-    }
-
-    // register constants
-    for (int i = 0; script_filesystem_constants[i].name != 0; i++) {
-        sq_pushstring(g_VM, script_filesystem_constants[i].name, -1);
-        sq_pushinteger(g_VM, script_filesystem_constants[i].value);
-        sq_newslot(g_VM, -3, SQFalse);
-    }
-}
-
-/******************************************************************
- *                                                                *
- *                             VIDEO                              *
- *                                                                *
- ******************************************************************/
-
-/**************************** TEXTURE *****************************/
+/************************ TEXTURE OBJECT **************************/
 
 #define SETUP_TEXTURE_OBJECT() \
     ITexture* This = 0; \
@@ -3048,6 +2902,54 @@ static void init_texture_class()
 }
 
 /*********************** GLOBAL FUNCTIONS *************************/
+
+//-----------------------------------------------------------------
+// CreateColor(red, green, blue [, alpha = 255])
+static SQInteger script_CreateColor(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(3)
+    GET_ARG_INT(1, red)
+    GET_ARG_INT(2, green)
+    GET_ARG_INT(3, blue)
+    GET_OPTARG_INT(4, alpha, 255)
+    RET_INT(RGBA::Pack(red, green, blue, alpha))
+}
+
+//-----------------------------------------------------------------
+// UnpackRed(color)
+static SQInteger script_UnpackRed(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).red)
+}
+
+//-----------------------------------------------------------------
+// UnpackGreen(color)
+static SQInteger script_UnpackGreen(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).green)
+}
+
+//-----------------------------------------------------------------
+// UnpackBlue(color)
+static SQInteger script_UnpackBlue(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).blue)
+}
+
+//-----------------------------------------------------------------
+// UnpackAlpha(color)
+static SQInteger script_UnpackAlpha(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_INT(1, color)
+    RET_INT(RGBA::Unpack((u32)color).alpha)
+}
 
 //-----------------------------------------------------------------
 // GetSupportedVideoModes()
@@ -3468,7 +3370,12 @@ static SQInteger script_DrawSubImageQuad(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-static ScriptFuncReg script_video_functions[] = {
+static ScriptFuncReg script_graphics_functions[] = {
+    {"CreateColor",                 "CreateColor",              script_CreateColor              },
+    {"UnpackRed",                   "UnpackRed",                script_UnpackRed                },
+    {"UnpackGreen",                 "UnpackGreen",              script_UnpackGreen              },
+    {"UnpackBlue",                  "UnpackBlue",               script_UnpackBlue               },
+    {"UnpackAlpha",                 "UnpackAlpha",              script_UnpackAlpha              },
     {"GetSupportedVideoModes",      "GetSupportedVideoModes",   script_GetSupportedVideoModes   },
     {"OpenWindow",                  "OpenWindow",               script_OpenWindow               },
     {"IsWindowOpen",                "IsWindowOpen",             script_IsWindowOpen             },
@@ -3496,44 +3403,55 @@ static ScriptFuncReg script_video_functions[] = {
 };
 
 //-----------------------------------------------------------------
-static ScriptConstReg script_video_constants[] = {
+static ScriptConstReg script_graphics_constants[] = {
+    {"BLACK",   RGBA::Pack(  0,   0,   0) },
+    {"WHITE",   RGBA::Pack(255, 255, 255) },
+    {"RED",     RGBA::Pack(255,   0,   0) },
+    {"GREEN",   RGBA::Pack(0,   255,   0) },
+    {"BLUE",    RGBA::Pack(0,     0, 255) },
+    {"YELLOW",  RGBA::Pack(255, 255,   0) },
     {0,0}
 };
 
 //-----------------------------------------------------------------
-static void register_video_api()
+static void register_graphics_api()
 {
     // init classes
+    init_canvas_class();
     init_texture_class();
 
     // register classes
+    sq_pushstring(g_VM, "Canvas", -1);
+    sq_pushobject(g_VM, g_CanvasClass);
+    sq_newslot(g_VM, -3, SQFalse);
+
     sq_pushstring(g_VM, "Texture", -1);
     sq_pushobject(g_VM, g_TextureClass);
     sq_newslot(g_VM, -3, SQFalse);
 
     // register functions
-    for (int i = 0; script_video_functions[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_video_functions[i].funcname, -1);
-        sq_newclosure(g_VM, script_video_functions[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_video_functions[i].debugname);
+    for (int i = 0; script_graphics_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_graphics_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_graphics_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_graphics_functions[i].debugname);
         sq_newslot(g_VM, -3, SQFalse);
     }
 
     // register constants
-    for (int i = 0; script_video_constants[i].name != 0; i++) {
-        sq_pushstring(g_VM, script_video_constants[i].name, -1);
-        sq_pushinteger(g_VM, script_video_constants[i].value);
+    for (int i = 0; script_graphics_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_graphics_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_graphics_constants[i].value);
         sq_newslot(g_VM, -3, SQFalse);
     }
 }
 
 /******************************************************************
  *                                                                *
- *                             AUDIO                              *
+ *                             SOUND                              *
  *                                                                *
  ******************************************************************/
 
-/***************************** SOUND ******************************/
+/************************* SOUND OBJECT ***************************/
 
 #define SETUP_SOUND_OBJECT() \
     ISound* This = 0; \
@@ -3776,7 +3694,7 @@ static void init_sound_class()
     sq_poptop(g_VM); // pop class
 }
 
-/************************** SOUNDEFFECT ***************************/
+/********************** SOUNDEFFECT OBJECT ************************/
 
 #define SETUP_SOUNDEFFECT_OBJECT() \
     ISoundEffect* This = 0; \
@@ -3989,7 +3907,7 @@ static ScriptConstReg script_audio_constants[] = {
 };
 
 //-----------------------------------------------------------------
-static void register_audio_api()
+static void register_sound_api()
 {
     // init classes
     init_sound_class();
@@ -4532,11 +4450,11 @@ static void register_input_api()
 
 /******************************************************************
  *                                                                *
- *                          COMPRESSION                           *
+ *                             UTILITY                            *
  *                                                                *
  ******************************************************************/
 
-/**************************** ZSTREAM *****************************/
+/************************* ZSTREAM OBJECT *************************/
 
 #define SETUP_ZSTREAM_OBJECT() \
     ZStream* This = 0; \
@@ -4760,17 +4678,17 @@ static void init_zstream_class()
 /*********************** GLOBAL FUNCTIONS *************************/
 
 //-----------------------------------------------------------------
-static ScriptFuncReg script_compression_functions[] = {
+static ScriptFuncReg script_utility_functions[] = {
     {0,0}
 };
 
 //-----------------------------------------------------------------
-static ScriptConstReg script_compression_constants[] = {
+static ScriptConstReg script_utility_constants[] = {
     {0,0}
 };
 
 //-----------------------------------------------------------------
-static void register_compression_api()
+static void register_utility_api()
 {
     // init classes
     init_zstream_class();
@@ -4781,28 +4699,26 @@ static void register_compression_api()
     sq_newslot(g_VM, -3, SQFalse);
 
     // register functions
-    for (int i = 0; script_compression_functions[i].funcname != 0; i++) {
-        sq_pushstring(g_VM, script_compression_functions[i].funcname, -1);
-        sq_newclosure(g_VM, script_compression_functions[i].funcptr, 0);
-        sq_setnativeclosurename(g_VM, -1, script_compression_functions[i].debugname);
+    for (int i = 0; script_utility_functions[i].funcname != 0; i++) {
+        sq_pushstring(g_VM, script_utility_functions[i].funcname, -1);
+        sq_newclosure(g_VM, script_utility_functions[i].funcptr, 0);
+        sq_setnativeclosurename(g_VM, -1, script_utility_functions[i].debugname);
         sq_newslot(g_VM, -3, SQFalse);
     }
 
     // register constants
-    for (int i = 0; script_compression_constants[i].name != 0; i++) {
-        sq_pushstring(g_VM, script_compression_constants[i].name, -1);
-        sq_pushinteger(g_VM, script_compression_constants[i].value);
+    for (int i = 0; script_utility_constants[i].name != 0; i++) {
+        sq_pushstring(g_VM, script_utility_constants[i].name, -1);
+        sq_pushinteger(g_VM, script_utility_constants[i].value);
         sq_newslot(g_VM, -3, SQFalse);
     }
 }
 
 /******************************************************************
  *                                                                *
- *                             SYSTEM                             *
+ *                      GENERAL FUNCTIONS                         *
  *                                                                *
  ******************************************************************/
-
-/*********************** GLOBAL FUNCTIONS *************************/
 
 //-----------------------------------------------------------------
 // GetTime()
@@ -5738,14 +5654,12 @@ bool InitScript(const Log& log)
 
     // register sphere API
     register_core_api();
-    register_io_api();
-    register_graphics_api(); // maybe merge graphics and video?
-    register_filesystem_api(); // must be registered after io, because file needs stream to be initialized first; maybe merge filesystem and io?
-    register_video_api();
-    register_audio_api();
-    register_input_api();
-    register_compression_api(); // maybe name it util and put in there the upcoming encryption api as well?
     register_system_api();
+    register_io_api();
+    register_graphics_api();
+    register_sound_api();
+    register_input_api();
+    register_utility_api();
 
     sq_poptop(g_VM); // done registering, pop root table
 
