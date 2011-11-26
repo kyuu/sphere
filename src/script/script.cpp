@@ -2663,6 +2663,30 @@ static SQInteger script_texture_constructor(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Texture.Load(filename)
+static SQInteger script_texture_Load(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    FilePtr file = OpenFile(filename);
+    if (!file) {
+        THROW_ERROR("Could not open file")
+    }
+    CanvasPtr image = LoadImage(file.get());
+    if (!image) {
+        THROW_ERROR("Could not load image")
+    }
+    TexturePtr texture = CreateTexture(image.get());
+    if (!texture) {
+        THROW_ERROR("Could not create texture")
+    }
+    RET_TEXTURE(texture.get())
+}
+
+//-----------------------------------------------------------------
 // Texture.updatePixels(new_pixels [, dst_rect])
 static SQInteger script_texture_updatePixels(HSQUIRRELVM v)
 {
@@ -2854,6 +2878,7 @@ static ScriptFuncReg script_texture_methods[] = {
 
 //-----------------------------------------------------------------
 static ScriptFuncReg script_texture_static_methods[] = {
+    {"Load",            "Texture.Load",         script_texture_Load         },
     {"_dump",           "Texture._dump",        script_texture__dump        },
     {"_load",           "Texture._load",        script_texture__load        },
     {0,0}
