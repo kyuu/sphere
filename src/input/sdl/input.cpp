@@ -666,65 +666,65 @@ fetch_event:
     if (SDL_PollEvent(&sdl_event) == 1) {
         switch (sdl_event.type) {
         case SDL_KEYDOWN:
-            out.type = Event::ET_KEY_DOWN;
+            out.type = Event::KEY_DOWN;
             out.key.key = sdl_scancode_to_key[sdl_event.key.keysym.scancode];
             break;
 
         case SDL_KEYUP:
-            out.type = Event::ET_KEY_UP;
+            out.type = Event::KEY_UP;
             out.key.key = sdl_scancode_to_key[sdl_event.key.keysym.scancode];
             break;
 
         case SDL_MOUSEBUTTONDOWN:
-            out.type = Event::ET_MOUSE_BUTTON_DOWN;
+            out.type = Event::MOUSE_BUTTON_DOWN;
             out.mbutton.button = sdl_event.button.button;
             break;
 
         case SDL_MOUSEBUTTONUP:
-            out.type = Event::ET_MOUSE_BUTTON_UP;
+            out.type = Event::MOUSE_BUTTON_UP;
             out.mbutton.button = sdl_event.button.button;
             break;
 
         case SDL_MOUSEMOTION:
-            out.type = Event::ET_MOUSE_MOTION;
+            out.type = Event::MOUSE_MOTION;
             out.mmotion.dx = sdl_event.motion.xrel;
             out.mmotion.dy = sdl_event.motion.yrel;
             break;
 
         case SDL_MOUSEWHEEL:
-            out.type = Event::ET_MOUSE_WHEEL_MOTION;
+            out.type = Event::MOUSE_WHEEL_MOTION;
             out.mwheel.dx = sdl_event.wheel.x;
             out.mwheel.dy = sdl_event.wheel.y;
             break;
 
         case SDL_JOYBUTTONDOWN:
-            out.type = Event::ET_JOY_BUTTON_DOWN;
+            out.type = Event::JOY_BUTTON_DOWN;
             out.jbutton.joy    = sdl_event.jbutton.which;
             out.jbutton.button = sdl_event.jbutton.button;
             break;
 
         case SDL_JOYBUTTONUP:
-            out.type = Event::ET_JOY_BUTTON_UP;
+            out.type = Event::JOY_BUTTON_UP;
             out.jbutton.joy    = sdl_event.jbutton.which;
             out.jbutton.button = sdl_event.jbutton.button;
             break;
 
         case SDL_JOYAXISMOTION:
-            out.type = Event::ET_JOY_AXIS_MOTION;
+            out.type = Event::JOY_AXIS_MOTION;
             out.jaxis.joy   = sdl_event.jaxis.which;
             out.jaxis.axis  = sdl_event.jaxis.axis;
             out.jaxis.value = sdl_event.jaxis.value;
             break;
 
         case SDL_JOYHATMOTION:
-            out.type = Event::ET_JOY_HAT_MOTION;
+            out.type = Event::JOY_HAT_MOTION;
             out.jhat.joy   = sdl_event.jhat.which;
             out.jhat.hat   = sdl_event.jhat.hat;
             out.jhat.state = sdl_event.jhat.value;
             break;
 
         case SDL_QUIT:
-            out.type = Event::ET_APP_QUIT;
+            out.type = Event::APP_QUIT;
             break;
 
         default:

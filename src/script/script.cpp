@@ -4019,21 +4019,21 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
         sq_newslot(v, -3, SQFalse);
 
         switch (event.type) {
-        case Event::ET_KEY_DOWN:
-        case Event::ET_KEY_UP:
+        case Event::KEY_DOWN:
+        case Event::KEY_UP:
             sq_pushstring(v, "key", -1);
             sq_pushinteger(v, event.key.key);
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_MOUSE_BUTTON_DOWN:
-        case Event::ET_MOUSE_BUTTON_UP:
+        case Event::MOUSE_BUTTON_DOWN:
+        case Event::MOUSE_BUTTON_UP:
             sq_pushstring(v, "mbutton", -1);
             sq_pushinteger(v, event.mbutton.button);
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_MOUSE_MOTION:
+        case Event::MOUSE_MOTION:
             sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mmotion.dx);
             sq_newslot(v, -3, SQFalse);
@@ -4043,7 +4043,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_MOUSE_WHEEL_MOTION:
+        case Event::MOUSE_WHEEL_MOTION:
             sq_pushstring(v, "dx", -1);
             sq_pushinteger(v, event.mwheel.dx);
             sq_newslot(v, -3, SQFalse);
@@ -4053,8 +4053,8 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_JOY_BUTTON_DOWN:
-        case Event::ET_JOY_BUTTON_UP:
+        case Event::JOY_BUTTON_DOWN:
+        case Event::JOY_BUTTON_UP:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jbutton.joy);
             sq_newslot(v, -3, SQFalse);
@@ -4064,7 +4064,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_JOY_AXIS_MOTION:
+        case Event::JOY_AXIS_MOTION:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jaxis.joy);
             sq_newslot(v, -3, SQFalse);
@@ -4078,7 +4078,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_JOY_HAT_MOTION:
+        case Event::JOY_HAT_MOTION:
             sq_pushstring(v, "joy", -1);
             sq_pushinteger(v, event.jhat.joy);
             sq_newslot(v, -3, SQFalse);
@@ -4092,7 +4092,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_newslot(v, -3, SQFalse);
             break;
 
-        case Event::ET_APP_QUIT:
+        case Event::APP_QUIT:
             break;
 
         default:
@@ -4329,17 +4329,17 @@ static ScriptFuncReg script_input_functions[] = {
 static ScriptConstReg script_input_constants[] = {
 
     // event constants
-    {"ET_KEY_DOWN",             Event::ET_KEY_DOWN          },
-    {"ET_KEY_UP",               Event::ET_KEY_UP            },
-    {"ET_MOUSE_BUTTON_DOWN",    Event::ET_MOUSE_BUTTON_DOWN },
-    {"ET_MOUSE_BUTTON_UP",      Event::ET_MOUSE_BUTTON_UP   },
-    {"ET_MOUSE_MOTION",         Event::ET_MOUSE_MOTION      },
-    {"ET_MOUSE_WHEEL_MOTION",   Event::ET_MOUSE_WHEEL_MOTION},
-    {"ET_JOY_BUTTON_DOWN",      Event::ET_JOY_BUTTON_DOWN   },
-    {"ET_JOY_BUTTON_UP",        Event::ET_JOY_BUTTON_UP     },
-    {"ET_JOY_AXIS_MOTION",      Event::ET_JOY_AXIS_MOTION   },
-    {"ET_JOY_HAT_MOTION",       Event::ET_JOY_HAT_MOTION    },
-    {"ET_APP_QUIT",             Event::ET_APP_QUIT          },
+    {"KEY_DOWN",             Event::KEY_DOWN          },
+    {"KEY_UP",               Event::KEY_UP            },
+    {"MOUSE_BUTTON_DOWN",    Event::MOUSE_BUTTON_DOWN },
+    {"MOUSE_BUTTON_UP",      Event::MOUSE_BUTTON_UP   },
+    {"MOUSE_MOTION",         Event::MOUSE_MOTION      },
+    {"MOUSE_WHEEL_MOTION",   Event::MOUSE_WHEEL_MOTION},
+    {"JOY_BUTTON_DOWN",      Event::JOY_BUTTON_DOWN   },
+    {"JOY_BUTTON_UP",        Event::JOY_BUTTON_UP     },
+    {"JOY_AXIS_MOTION",      Event::JOY_AXIS_MOTION   },
+    {"JOY_HAT_MOTION",       Event::JOY_HAT_MOTION    },
+    {"APP_QUIT",             Event::APP_QUIT          },
 
     // key constants
     {"KEY_A",               KEY_A               },
