@@ -53,9 +53,8 @@ struct ScriptConstReg {
 
 // squirrel vm
 static HSQUIRRELVM g_VM = 0;
-
-// log instance used by the print function
-static const Log* g_Log = 0;
+static std::string g_LastCompileError;
+static std::string g_LastRuntimeError;
 
 // holds all scripts which have been loaded through RequireScript
 static std::vector<std::string> g_ScriptRegistry;
@@ -4843,55 +4842,52 @@ static SQInteger script_Sleep(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-static bool compile_buffer(HSQUIRRELVM v, const std::string& name, const void* buffer, int size, bool raiseerror = true)
+bool CompileBuffer(const void* buffer, int size, const std::string& scriptName)
 {
     assert(buffer);
     assert(size > 0);
-    if (buffer && size > 0) {
-        return SQ_SUCCEEDED(sq_compilebuffer(v, (const SQChar*)buffer, size, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
-    }
-    return false;
+    return SQ_SUCCEEDED(sq_compilebuffer(g_VM, (const SQChar*)buffer, size, scriptName.c_str(), SQTrue));
 }
 
 //-----------------------------------------------------------------
-// CompileString(source [, scriptName = "unknown"])
+// CompileString(string [, scriptName = "unknown"])
 static SQInteger script_CompileString(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(1)
-    GET_ARG_STRING(1, source)
+    GET_ARG_STRING(1, str)
     GET_OPTARG_STRING(2, scriptName, "unknown")
-    int len = strlen(source);
+    int len = sq_getsize(g_VM, 2);
     if (len == 0) {
-        THROW_ERROR("Empty source")
+        THROW_ERROR("Empty string")
     }
-    if (!compile_buffer(v, scriptName, source, len)) {
-        THROW_ERROR("Could not compile string")
+    if (!CompileBuffer(str, len, scriptName)) {
+        THROW_ERROR1("Could not compile string: %s", g_LastCompileError.c_str())
     }
     return 1;
 }
 
 //-----------------------------------------------------------------
-// CompileBlob(source [, scriptName = "unknown", offset = 0, count = -1])
+// CompileBlob(blob [, scriptName = "unknown", offset = 0, count = -1])
 static SQInteger script_CompileBlob(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(1)
-    GET_ARG_BLOB(1, source)
+    GET_ARG_BLOB(1, blob)
     GET_OPTARG_STRING(2, scriptName, "unknown")
     GET_OPTARG_INT(3, offset, 0)
     GET_OPTARG_INT(4, count, -1)
-    if (source->getSize() == 0) {
-        THROW_ERROR("Empty source")
+    if (blob->getSize() == 0) {
+        THROW_ERROR("Empty blob")
     }
-    if (offset < 0 || offset >= source->getSize()) {
+    if (offset < 0 || offset >= blob->getSize()) {
         THROW_ERROR("Invalid offset")
     }
     if (count < 0) {
-        count = source->getSize() - offset;
-    } else if (count == 0 || count > source->getSize() - offset) {
+        count = blob->getSize() - offset;
+    } else if (count == 0 || count > blob->getSize() - offset) {
         THROW_ERROR("Invalid count")
     }
-    if (!compile_buffer(v, scriptName, source->getBuffer() + offset, count)) {
-        THROW_ERROR("Could not compile blob")
+    if (!CompileBuffer(blob->getBuffer() + offset, count, scriptName)) {
+        THROW_ERROR1("Could not compile blob: %s", g_LastCompileError.c_str())
     }
     return 1;
 }
@@ -4925,36 +4921,36 @@ static SQInteger lexfeed_callback_ex(SQUserPointer p)
 }
 
 //-----------------------------------------------------------------
-static bool compile_stream(HSQUIRRELVM v, const std::string& name, IStream* stream, int size = -1, bool raiseerror = true)
+bool CompileStream(IStream* stream, const std::string& scriptName, int count)
 {
     assert(stream);
     if (stream) {
-        if (size > 0) {
-            STREAMSOURCE ss = {stream, size};
-            return SQ_SUCCEEDED(sq_compile(v, lexfeed_callback_ex, &ss, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
+        if (count > 0) {
+            STREAMSOURCE ss = {stream, count};
+            return SQ_SUCCEEDED(sq_compile(g_VM, lexfeed_callback_ex, &ss, scriptName.c_str(), SQTrue));
         } else {
-            return SQ_SUCCEEDED(sq_compile(v, lexfeed_callback, stream, name.c_str(), (raiseerror ? SQTrue : SQFalse)));
+            return SQ_SUCCEEDED(sq_compile(g_VM, lexfeed_callback, stream, scriptName.c_str(), SQTrue));
         }
     }
     return false;
 }
 
 //-----------------------------------------------------------------
-// CompileStream(source [, scriptName = "unknown", count = -1])
+// CompileStream(stream [, scriptName = "unknown", count = -1])
 static SQInteger script_CompileStream(HSQUIRRELVM v)
 {
     CHECK_MIN_NARGS(1)
-    GET_ARG_STREAM(1, source)
+    GET_ARG_STREAM(1, stream)
     GET_OPTARG_STRING(2, scriptName, "unknown")
     GET_OPTARG_INT(3, count, -1)
-    if (!source->isOpen() || !source->isReadable()) {
-        THROW_ERROR("Invalid source")
+    if (!stream->isOpen() || !stream->isReadable()) {
+        THROW_ERROR("Invalid stream")
     }
     if (count == 0) {
         THROW_ERROR("Invalid count")
     }
-    if (!compile_stream(v, scriptName, source, count)) {
-        THROW_ERROR("Could not compile stream")
+    if (!CompileStream(stream, scriptName, count)) {
+        THROW_ERROR1("Could not compile stream: %s", g_LastCompileError.c_str())
     }
     return 1;
 }
@@ -4974,7 +4970,7 @@ bool EvaluateScript(const std::string& filename)
             }
         } else { // try compiling as plain text
             file->seek(0); // LoadObject changed the stream position, set it back to beginning
-            if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
+            if (!CompileStream(file.get(), file->getName())) {
                 sq_settop(g_VM, old_top); // restore stack top
                 return false;
             }
@@ -5000,7 +4996,7 @@ static SQInteger script_EvaluateScript(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_STRING(1, name)
-    if (strlen(name) == 0) {
+    if (sq_getsize(v, 2) == 0) {
         THROW_ERROR("Empty script name")
     }
 
@@ -5012,7 +5008,7 @@ static SQInteger script_EvaluateScript(HSQUIRRELVM v)
 
     // evaluate script
     if (!EvaluateScript(script)) {
-        THROW_ERROR("Could not evaluate script")
+        THROW_ERROR1("Could not evaluate script '%s'", script.c_str())
     }
     RET_VOID()
 }
@@ -5059,7 +5055,7 @@ static SQInteger script_GetLoadedScripts(HSQUIRRELVM v)
 {
     sq_newarray(v, g_ScriptRegistry.size());
     for (int i = 0; i < (int)g_ScriptRegistry.size(); i++) {
-        sq_pushinteger(v, i); // key
+        sq_pushinteger(v, i);
         sq_pushstring(v, g_ScriptRegistry[i].c_str(), -1);
         sq_rawset(v, -3);
     }
@@ -5200,7 +5196,7 @@ bool JSONParse(const char* jsonstr)
     int oldtop = sq_gettop(g_VM);
     // compile string
     std::string src = std::string("return ") + jsonstr;
-    if (!compile_buffer(g_VM, "JSON string", src.c_str(), src.length(), false)) {
+    if (!CompileBuffer(src.c_str(), src.length())) {
         return false;
     }
     // execute closure returning the object
@@ -5687,21 +5683,26 @@ static void register_system_api()
 //-----------------------------------------------------------------
 static void compiler_error_handler(HSQUIRRELVM v, const SQChar* desc, const SQChar* source, SQInteger line, SQInteger column)
 {
-    if (g_Log) {
-        g_Log->error() << "Script compile error in '" << source << "' line " << line << ": " << desc;
-    }
+    std::ostringstream oss;
+    oss << "Compile error in '";
+    oss << source;
+    oss << "' line ";
+    oss << line;
+    oss << " (";
+    oss << column;
+    oss << "): ";
+    oss << desc;
+    g_LastCompileError = oss.str();
 }
 
 //-----------------------------------------------------------------
 static SQInteger runtime_error_handler(HSQUIRRELVM v)
 {
-    int top = sq_gettop(v);
-    sq_tostring(v, 2);
-    const SQChar* error = "N/A";
+    sq_tostring(v, 2); // stringify error
+    const SQChar* error = 0;
     sq_getstring(v, -1, &error);
-    assert(g_Log);
-    g_Log->error() << "Script runtime error: " << error;
-    sq_settop(v, top);
+    g_LastRuntimeError = std::string("Unhandled exception: ") + error;
+    sq_poptop(v); // pop error string
     return 0;
 }
 
@@ -5752,8 +5753,13 @@ static void print_func(HSQUIRRELVM v, const SQChar* format, ...)
     }
 #endif
     va_end(arglist);
-    if (g_Log) {
-        g_Log->debug() << "Script output: " << (const char*)s_Buffer.get();
+
+    static FILE* s_OutputFile = 0;
+    if (!s_OutputFile) {
+        s_OutputFile = fopen("output.txt", "w");
+    }
+    if (s_OutputFile) {
+        fprintf(s_OutputFile, "%s\n", s_Buffer.get());
     }
 }
 
@@ -5796,8 +5802,6 @@ bool InitScript(const Log& log)
 
     sq_poptop(g_VM); // done registering, pop root table
 
-    g_Log = &log; // will be used to output compiler and runtime script errors, as well as to output the result of the print function
-
     return true;
 
 lib_init_failed:
@@ -5813,7 +5817,6 @@ void DeinitScript()
         sq_close(g_VM);
         g_VM = 0;
     }
-    g_Log = 0;
 }
 
 //-----------------------------------------------------------------
@@ -5826,20 +5829,20 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
         FilePtr file = OpenFile(script);
         if (LoadObject(file.get())) { // try loading as bytecode
             if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
-                log.error() << "Error loading script '" << script << "' as bytecode";
+                log.error() << "Error loading main script '" << script << "' as bytecode";
                 sq_settop(g_VM, old_top);
                 return;
             }
         } else { // try compiling as plain text
             file->seek(0); // LoadObject changed the stream position, set it back to beginning
-            if (!compile_stream(g_VM, file->getName().c_str(), file.get())) {
-                log.error() << "Error compiling script '" << script << "'";
+            if (!CompileStream(file.get(), file->getName())) {
+                log.error() << "Error compiling main script '" << script << "': " << g_LastCompileError;
                 sq_settop(g_VM, old_top);
                 return;
             }
         }
     } else { // file does not exist
-        log.error() << "Script '" << script << "' does not exist";
+        log.error() << "Main script '" << script << "' does not exist";
         sq_settop(g_VM, old_top);
         return;
     }
@@ -5847,7 +5850,7 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
     // run script
     sq_pushroottable(g_VM); // this
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQFalse, SQTrue))) {
-        log.error() << "Error executing script '" << script << "'";
+        log.error() << "Error executing main script '" << script << "': " << g_LastRuntimeError;
         sq_settop(g_VM, old_top);
         return;
     }
@@ -5857,12 +5860,12 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
     sq_pushroottable(g_VM);
     sq_pushstring(g_VM, "main", -1);
     if (!SQ_SUCCEEDED(sq_rawget(g_VM, -2))) {
-        log.error() << "Entry point 'main' not defined in script '" << script << "'";
+        log.error() << "Entry point 'main' not defined in main script '" << script << "'";
         sq_settop(g_VM, old_top);
         return;
     }
     if (sq_gettype(g_VM, -1) != OT_CLOSURE) {
-        log.error() << "Symbol 'main' is not a function in script '" << script << "'";
+        log.error() << "Symbol 'main' is not a function in main script '" << script << "'";
         sq_settop(g_VM, old_top);
         return;
     }
@@ -5871,7 +5874,7 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
         sq_pushstring(g_VM, args[i].c_str(), -1);
     }
     if (!SQ_SUCCEEDED(sq_call(g_VM, 1 + args.size(), SQFalse, SQTrue))) {
-        log.error() << "Error calling 'main' in script '" << script << "'";
+        log.error() << "Error calling 'main' in main script '" << script << "': " << g_LastRuntimeError;
     }
     sq_settop(g_VM, old_top);
 }

@@ -19,6 +19,8 @@
 
 
 HSQUIRRELVM GetVM();
+bool        CompileBuffer(const void* buffer, int size, const std::string& scriptName = "unknown");
+bool        CompileStream(IStream* stream, const std::string& scriptName = "unknown", int count = -1);
 bool        EvaluateScript(const std::string& filename);
 bool        JSONStringify(SQInteger idx);
 bool        JSONParse(const char* jsonstr);

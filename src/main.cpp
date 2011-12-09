@@ -16,7 +16,7 @@
 int main(int argc, char* argv[])
 {
     Log log;
-    log.open("log.txt");
+    log.open("engine.log");
 
     // print sphere version
     log.info() << "Sphere Engine " << SPHERE_VERSION_STRING << " " << SPHERE_VERSION_AFFIX;
