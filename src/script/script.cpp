@@ -4773,6 +4773,52 @@ static SQInteger script_GetTime(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// GetTimeInfo([time, utc])
+static SQInteger script_GetTimeInfo(HSQUIRRELVM v)
+{
+    GET_OPTARG_INT(1, time, GetTime())
+    GET_OPTARG_BOOL(2, utc, SQFalse)
+
+    TimeInfo timeinfo = GetTimeInfo(time, (utc == SQTrue ? true : false));
+
+    sq_newtable(v);
+
+    sq_pushstring(v, "second", -1);
+    sq_pushinteger(v, timeinfo.second);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "minute", -1);
+    sq_pushinteger(v, timeinfo.minute);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "hour", -1);
+    sq_pushinteger(v, timeinfo.hour);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "day", -1);
+    sq_pushinteger(v, timeinfo.day);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "month", -1);
+    sq_pushinteger(v, timeinfo.month);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "year", -1);
+    sq_pushinteger(v, timeinfo.year);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "weekday", -1);
+    sq_pushinteger(v, timeinfo.weekday);
+    sq_newslot(v, -3, SQFalse);
+
+    sq_pushstring(v, "yearday", -1);
+    sq_pushinteger(v, timeinfo.yearday);
+    sq_newslot(v, -3, SQFalse);
+
+    return 1;
+}
+
+//-----------------------------------------------------------------
 // GetTicks()
 static SQInteger script_GetTicks(HSQUIRRELVM v)
 {
@@ -5551,6 +5597,7 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 //-----------------------------------------------------------------
 static ScriptFuncReg script_system_functions[] = {
     {"GetTime",             "GetTime",          script_GetTime          },
+    {"GetTimeInfo",         "GetTimeInfo",      script_GetTimeInfo      },
     {"GetTicks",            "GetTicks",         script_GetTicks         },
     {"Random",              "Random",           script_Random           },
     {"Sleep",               "Sleep",            script_Sleep            },
