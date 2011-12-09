@@ -6,7 +6,7 @@
 
 int  GetTime();
 int  GetTicks();
-int  GetRandom();
+float GetRandom();
 void ThreadSleep(int ms);
 
 bool InitSystem(const Log& log);

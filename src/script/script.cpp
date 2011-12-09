@@ -4780,10 +4780,10 @@ static SQInteger script_GetTicks(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-// GetRandom()
-static SQInteger script_GetRandom(HSQUIRRELVM v)
+// Random()
+static SQInteger script_Random(HSQUIRRELVM v)
 {
-    RET_INT(GetRandom())
+    RET_FLOAT(GetRandom())
 }
 
 //-----------------------------------------------------------------
@@ -5552,7 +5552,7 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 static ScriptFuncReg script_system_functions[] = {
     {"GetTime",             "GetTime",          script_GetTime          },
     {"GetTicks",            "GetTicks",         script_GetTicks         },
-    {"GetRandom",           "GetRandom",        script_GetRandom        },
+    {"Random",              "Random",           script_Random           },
     {"Sleep",               "Sleep",            script_Sleep            },
     {"CompileString",       "CompileString",    script_CompileString    },
     {"CompileBlob",         "CompileBlob",      script_CompileBlob      },
