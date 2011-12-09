@@ -5067,7 +5067,7 @@ static SQInteger script_GetLoadedScripts(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-bool ObjectToJSON(SQInteger idx)
+bool JSONStringify(SQInteger idx)
 {
     if (idx < 0) { // make any negative indices positive to reduce complexity
         idx = (sq_gettop(g_VM) + 1) + idx;
@@ -5131,7 +5131,7 @@ bool ObjectToJSON(SQInteger idx)
                 sq_getstring(g_VM, top, &temp);
                 oss << "\"" << temp << "\"";
             } else {
-                if (!ObjectToJSON(top)) { // tojson value
+                if (!JSONStringify(top)) { // stringify value
                     sq_settop(g_VM, oldtop);
                     return false;
                 }
@@ -5163,7 +5163,7 @@ bool ObjectToJSON(SQInteger idx)
                 sq_getstring(g_VM, idx+3, &temp);
                 oss << "\"" << temp << "\"";
             } else {
-                if (!ObjectToJSON(idx+3)) { // tojson value
+                if (!JSONStringify(idx+3)) { // stringify value
                     sq_settop(g_VM, oldtop);
                     return false;
                 }
@@ -5184,11 +5184,51 @@ bool ObjectToJSON(SQInteger idx)
 }
 
 //-----------------------------------------------------------------
-// ObjectToJSON(object)
-static SQInteger script_ObjectToJSON(HSQUIRRELVM v)
+// JSONStringify(object)
+static SQInteger script_JSONStringify(HSQUIRRELVM v)
 {
-    if (!ObjectToJSON(2)) {
-        THROW_ERROR("conversion to JSON failed")
+    if (!JSONStringify(2)) {
+        THROW_ERROR("Could not stringify object")
+    }
+    return 1;
+}
+
+//-----------------------------------------------------------------
+bool JSONParse(const char* jsonstr)
+{
+    assert(jsonstr);
+    int oldtop = sq_gettop(g_VM);
+    // compile string
+    std::string src = std::string("return ") + jsonstr;
+    if (!compile_buffer(g_VM, "JSON string", src.c_str(), src.length(), false)) {
+        return false;
+    }
+    // execute closure returning the object
+    sq_pushroottable(g_VM); // this
+    if (!SQ_SUCCEEDED(sq_call(g_VM, 1, SQTrue, SQFalse))) {
+        sq_settop(g_VM, oldtop);
+        return false;
+    }
+    // the object is now on top of the stack
+    int numtopop = (sq_gettop(g_VM) - oldtop) - 1;
+    while (numtopop > 0) {
+        sq_remove(g_VM, -2);
+        numtopop--;
+    }
+    return true;
+}
+
+//-----------------------------------------------------------------
+// JSONParse(jsonstr)
+static SQInteger script_JSONParse(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STRING(1, jsonstr)
+    if (sq_getsize(v, 2) == 0) {
+        THROW_ERROR("Empty JSON string")
+    }
+    if (!JSONParse(jsonstr)) {
+        THROW_ERROR("Could not parse JSON string")
     }
     return 1;
 }
@@ -5607,7 +5647,8 @@ static ScriptFuncReg script_system_functions[] = {
     {"EvaluateScript",      "EvaluateScript",   script_EvaluateScript   },
     {"RequireScript",       "RequireScript",    script_RequireScript    },
     {"GetLoadedScripts",    "GetLoadedScripts", script_GetLoadedScripts },
-    {"ObjectToJSON",        "ObjectToJSON",     script_ObjectToJSON     },
+    {"JSONStringify",       "JSONStringify",    script_JSONStringify    },
+    {"JSONParse",           "JSONParse",        script_JSONParse        },
     {"DumpObject",          "DumpObject",       script_DumpObject       },
     {"LoadObject",          "LoadObject",       script_LoadObject       },
     {0,0}

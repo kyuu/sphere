@@ -20,7 +20,8 @@
 
 HSQUIRRELVM GetVM();
 bool        EvaluateScript(const std::string& filename);
-bool        ObjectToJSON(SQInteger idx);
+bool        JSONStringify(SQInteger idx);
+bool        JSONParse(const char* jsonstr);
 bool        DumpObject(SQInteger idx, IStream* stream);
 bool        LoadObject(IStream* stream);
 SQRESULT    ThrowError(const char* format, ...);
