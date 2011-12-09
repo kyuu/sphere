@@ -83,8 +83,8 @@ int main(int argc, char* argv[])
         } else if (arg == "-data" && i + 1 < argc) {
             config.DataPath = argv[i + 1];
             i++;
-        } else if (arg == "-startup" && i + 1 < argc) {
-            config.StartupScript = argv[i + 1];
+        } else if (arg == "-main" && i + 1 < argc) {
+            config.MainScript = argv[i + 1];
             i++;
         } else if (arg == "-arg" && i + 1 < argc) {
             config.GameArgs.push_back(argv[i + 1]);
@@ -104,12 +104,12 @@ int main(int argc, char* argv[])
     // run game
     log.info() << "Run game";
     try {
-        if (DoesFileExist(config.StartupScript + ".bytecode")) {
-            RunGame(log, config.StartupScript + ".bytecode", config.GameArgs);
-        } else if (DoesFileExist(config.StartupScript + ".script")) {
-            RunGame(log, config.StartupScript + ".script", config.GameArgs);
+        if (DoesFileExist(config.MainScript + ".bytecode")) {
+            RunGame(log, config.MainScript + ".bytecode", config.GameArgs);
+        } else if (DoesFileExist(config.MainScript + ".script")) {
+            RunGame(log, config.MainScript + ".script", config.GameArgs);
         } else {
-            log.error() << "Startup script '" << config.StartupScript << "' does not exist";
+            log.error() << "Main script '" << config.MainScript << "' does not exist";
         }
     } catch (const std::exception& e) {
         log.error() << "Exception caught: " << (e.what() ? e.what() : "N/A");
