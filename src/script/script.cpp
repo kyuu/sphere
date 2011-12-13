@@ -4789,6 +4789,23 @@ static void register_utility_api()
  ******************************************************************/
 
 //-----------------------------------------------------------------
+// Assert(expr)
+static SQInteger script_Assert(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    SQBool expr;
+    if (sq_gettype(v, 2) == OT_BOOL) {
+        sq_getbool(v, 2, &expr);
+    } else {
+        sq_tobool(v, 2, &expr);
+    }
+    if (expr != SQTrue) {
+        THROW_ERROR("Assertion failed");
+    }
+    RET_VOID()
+}
+
+//-----------------------------------------------------------------
 // GetTime()
 static SQInteger script_GetTime(HSQUIRRELVM v)
 {
@@ -5656,6 +5673,7 @@ static SQInteger script_LoadObject(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 static ScriptFuncReg script_system_functions[] = {
+    {"Assert",              "Assert",           script_Assert           },
     {"GetTime",             "GetTime",          script_GetTime          },
     {"GetTimeInfo",         "GetTimeInfo",      script_GetTimeInfo      },
     {"GetTicks",            "GetTicks",         script_GetTicks         },
