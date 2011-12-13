@@ -5700,6 +5700,9 @@ static ScriptConstReg script_system_constants[] = {
     {"SPHERE_MAJOR",    SPHERE_MAJOR    },
     {"SPHERE_MINOR",    SPHERE_MINOR    },
     {"SPHERE_PATCH",    SPHERE_PATCH    },
+    {"SQUIRREL_MAJOR",   SQUIRREL_VERSION_NUMBER / 100          },
+    {"SQUIRREL_MINOR",  (SQUIRREL_VERSION_NUMBER % 100) / 10    },
+    {"SQUIRREL_PATCH",   SQUIRREL_VERSION_NUMBER % 10           },
     {0,0}
 };
 
@@ -5720,10 +5723,6 @@ static void register_system_api()
         sq_pushinteger(g_VM, script_system_constants[i].value);
         sq_newslot(g_VM, -3, SQFalse);
     }
-
-    sq_pushstring(g_VM, "SPHERE_AFFIX", -1);
-    sq_pushstring(g_VM, SPHERE_AFFIX, -1);
-    sq_newslot(g_VM, -3, SQFalse);
 }
 
 /******************************************************************
