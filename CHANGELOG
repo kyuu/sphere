@@ -1,0 +1,12 @@
+Version 2.0.0 Beta 2
+ - Make API functions simpler and shorter.
+ - Add engine configuration file.
+ - Fix multiple issues in graphics functions.
+ - Add functions Texture.Load and Texture.LoadFromStream.
+ - Add functions Canvas.flipHorizontally and Canvas.flipVertically.
+ - Add function GetTimeInfo.
+ - Rename ObjectToJSON to JSONStringify and add JSONParse.
+ - Fix memory leak in Stream.read and Blob.FromString.
+ - Add function Assert.
+ - Add common scripts windowstyle, spriteset and font.
+ - Add version and integer limits constants.
