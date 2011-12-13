@@ -491,7 +491,7 @@ void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask)
     glTexCoord2f(0, 0);
     glVertex2i(pos[0].x, pos[0].y);
 
-    glTexCoord2f(w, h);
+    glTexCoord2f(w, 0);
     glVertex2i(pos[1].x, pos[1].y);
 
     glTexCoord2f(w, h);
