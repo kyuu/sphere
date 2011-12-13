@@ -51,10 +51,7 @@ Canvas* LoadImage(IStream* stream)
     CoronaFileAdapter cfa(stream);
     std::auto_ptr<corona::Image> img(corona::OpenImage(&cfa, corona::PF_R8G8B8A8));
     if (img.get()) {
-        CanvasPtr canvas = Canvas::Create(img->getWidth(), img->getHeight(), (const RGBA*)img->getPixels());
-        if (canvas) {
-            return canvas.release();
-        }
+        return Canvas::Create(img->getWidth(), img->getHeight(), (const RGBA*)img->getPixels());
     }
     return 0;
 }

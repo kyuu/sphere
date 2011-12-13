@@ -1012,13 +1012,13 @@ static SQInteger script_stream_read(HSQUIRRELVM v)
     }
     BlobPtr blob = Blob::Create(size);
     if (size == 0) {
-        RET_BLOB(blob.release())
+        RET_BLOB(blob.get())
     }
     blob->resize(size);
     if (This->read(blob->getBuffer(), size) != size) {
         THROW_ERROR("Read error")
     }
-    RET_BLOB(blob.release())
+    RET_BLOB(blob.get())
 }
 
 //-----------------------------------------------------------------
@@ -1363,13 +1363,13 @@ static SQInteger script_blob_constructor(HSQUIRRELVM v)
 static SQInteger script_blob_FromString(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
-    GET_ARG_STRING(1, string)
+    GET_ARG_STRING(1, str)
     BlobPtr blob = Blob::Create();
     int len = sq_getsize(v, 2);
     if (len > 0) {
-        blob->assign(string, len);
+        blob->assign(str, len);
     }
-    RET_BLOB(blob.release())
+    RET_BLOB(blob.get())
 }
 
 //-----------------------------------------------------------------
