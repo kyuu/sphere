@@ -2,6 +2,7 @@
 #include <vector>
 #include <sstream>
 #include <audiere.h>
+#include "../../error.hpp"
 #include "../../Log.hpp"
 #include "../audio.hpp"
 #include "Sound.hpp"
@@ -52,10 +53,14 @@ ISound* LoadSound(IStream* stream, bool streaming)
     if (!stream || !stream->isReadable()) {
         return 0;
     }
-    audiere::FilePtr file_adapter(new AudiereFileAdapter(stream));
-    audiere::OutputStream* sound = audiere::OpenSound(g_audio_device, file_adapter, streaming);
-    if (sound) {
-        return Sound::Create(sound);
+    try {
+        audiere::FilePtr file_adapter(new AudiereFileAdapter(stream));
+        audiere::OutputStream* sound = audiere::OpenSound(g_audio_device, file_adapter, streaming);
+        if (sound) {
+            return Sound::Create(sound);
+        }
+    } catch (const std::bad_alloc&) {
+        ReportOutOfMemory();
     }
     return 0;
 }
@@ -66,10 +71,14 @@ ISoundEffect* LoadSoundEffect(IStream* stream)
     if (!stream || !stream->isReadable()) {
         return 0;
     }
-    audiere::FilePtr file_adapter(new AudiereFileAdapter(stream));
-    audiere::SoundEffect* soundeffect = audiere::OpenSoundEffect(g_audio_device, file_adapter, audiere::MULTIPLE);
-    if (soundeffect) {
-        return SoundEffect::Create(soundeffect);
+    try {
+        audiere::FilePtr file_adapter(new AudiereFileAdapter(stream));
+        audiere::SoundEffect* soundeffect = audiere::OpenSoundEffect(g_audio_device, file_adapter, audiere::MULTIPLE);
+        if (soundeffect) {
+            return SoundEffect::Create(soundeffect);
+        }
+    } catch (const std::bad_alloc&) {
+        ReportOutOfMemory();
     }
     return 0;
 }

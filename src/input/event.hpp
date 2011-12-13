@@ -69,7 +69,7 @@ union Event {
         int type;  // JOY_HAT_MOTION
         int joy;   // the joystick that generated the event
         int hat;   // the joystick hat that was moved
-        int state; // current hat state
+        int value; // current hat value
     } jhat;
 };
 

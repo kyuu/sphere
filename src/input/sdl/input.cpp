@@ -720,7 +720,7 @@ fetch_event:
             out.type = Event::JOY_HAT_MOTION;
             out.jhat.joy   = sdl_event.jhat.which;
             out.jhat.hat   = sdl_event.jhat.hat;
-            out.jhat.state = sdl_event.jhat.value;
+            out.jhat.value = sdl_event.jhat.value;
             break;
 
         case SDL_QUIT:
@@ -833,7 +833,7 @@ bool IsJoystickButtonDown(int joy, int button)
 int GetJoystickAxis(int joy, int axis)
 {
     if (joy >= 0 && joy < (int)g_Joysticks.size()) {
-        return (int)SDL_JoystickGetAxis(g_Joysticks[joy].joystick, axis);
+        return (int)(SDL_JoystickGetAxis(g_Joysticks[joy].joystick, axis) / 327.67f);
     }
     return 0;
 }

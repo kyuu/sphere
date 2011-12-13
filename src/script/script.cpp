@@ -21,8 +21,8 @@
 #include "typetags.hpp"
 #include "macros.hpp"
 
-#define   SCRIPT_FILE_EXT ".script"
-#define BYTECODE_FILE_EXT ".bytecode"
+#define   SCRIPT_FILE_EXT ".nut"
+#define BYTECODE_FILE_EXT ".nutc"
 
 // marshal magic numbers
 #define MARSHAL_MAGIC_NULL         ((u32)0x6a9edf86)
@@ -462,20 +462,19 @@ static void init_rect_class()
 /************************* VEC2 OBJECT ****************************/
 
 #define SETUP_VEC2_OBJECT() \
-    Vec2i* This = 0; \
+    Vec2f* This = 0; \
     if (SQ_FAILED(sq_getinstanceup(v, 1, (SQUserPointer*)&This, TT_VEC2))) { \
         THROW_ERROR("Invalid type of environment object, expected a Vec2 instance") \
     }
 
 //-----------------------------------------------------------------
-// Vec2(x, y)
+// Vec2([x, y])
 static SQInteger script_vec2_constructor(HSQUIRRELVM v)
 {
     SETUP_VEC2_OBJECT()
-    CHECK_NARGS(2)
-    GET_ARG_INT(1, x)
-    GET_ARG_INT(2, y)
-    new (This) Vec2i(x, y);
+    GET_OPTARG_FLOAT(1, x, 0)
+    GET_OPTARG_FLOAT(2, y, 0)
+    new (This) Vec2f(x, y);
     RET_VOID()
 }
 
@@ -494,7 +493,7 @@ static SQInteger script_vec2_getDotProduct(HSQUIRRELVM v)
     SETUP_VEC2_OBJECT()
     CHECK_NARGS(1)
     GET_ARG_VEC2(1, other)
-    RET_INT(This->dot(*other))
+    RET_FLOAT(This->dot(*other))
 }
 
 //-----------------------------------------------------------------
@@ -531,12 +530,12 @@ static SQInteger script_vec2_rotateBy(HSQUIRRELVM v)
 {
     SETUP_VEC2_OBJECT()
     CHECK_MIN_NARGS(1)
-    GET_ARG_INT(1, degrees)
+    GET_ARG_FLOAT(1, degrees)
     GET_OPTARG_VEC2(2, center)
     if (center) {
-        This->rotateBy((float)degrees, *center);
+        This->rotateBy(degrees, *center);
     } else {
-        This->rotateBy((float)degrees);
+        This->rotateBy(degrees);
     }
     RET_VOID()
 }
@@ -665,9 +664,9 @@ static SQInteger script_vec2__get(HSQUIRRELVM v)
     CHECK_NARGS(1)
     GET_ARG_STRING(1, index)
     if (strcmp(index, "x") == 0) {
-        RET_INT(This->x)
+        RET_FLOAT(This->x)
     } else if (strcmp(index, "y") == 0) {
-        RET_INT(This->y)
+        RET_FLOAT(This->y)
     } else {
         // index not found
         sq_pushnull(v);
@@ -683,10 +682,10 @@ static SQInteger script_vec2__set(HSQUIRRELVM v)
     CHECK_NARGS(2)
     GET_ARG_STRING(1, index)
     if (strcmp(index, "x") == 0) {
-        GET_ARG_INT(2, value)
+        GET_ARG_FLOAT(2, value)
         This->x = value;
     } else if (strcmp(index, "y") == 0) {
-        GET_ARG_INT(2, value)
+        GET_ARG_FLOAT(2, value)
         This->y = value;
     } else {
         // index not found
@@ -711,7 +710,7 @@ static SQInteger script_vec2__cloned(HSQUIRRELVM v)
     SETUP_VEC2_OBJECT()
     CHECK_NARGS(1)
     GET_ARG_VEC2(1, original)
-    new (This) Vec2i(*original);
+    new (This) Vec2f(*original);
     RET_VOID()
 }
 
@@ -748,8 +747,8 @@ static SQInteger script_vec2__dump(HSQUIRRELVM v)
     }
 
     // write instance
-    if (!writei32l(stream, instance->x) ||
-        !writei32l(stream, instance->y))
+    if (!writef32l(stream, instance->x) ||
+        !writef32l(stream, instance->y))
     {
         goto throw_write_error;
     }
@@ -772,9 +771,9 @@ static SQInteger script_vec2__load(HSQUIRRELVM v)
     }
 
     // read instance
-    Vec2i instance;
-    if (!readi32l(stream, instance.x) ||
-        !readi32l(stream, instance.y))
+    Vec2f instance;
+    if (!readf32l(stream, instance.x) ||
+        !readf32l(stream, instance.y))
     {
         THROW_ERROR("Read error")
     }
@@ -783,7 +782,7 @@ static SQInteger script_vec2__load(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
-void BindVec2(const Vec2i& vec)
+void BindVec2(const Vec2f& vec)
 {
     assert(g_Vec2Class._type == OT_CLASS);
     sq_pushobject(g_VM, g_Vec2Class); // push vec2 class
@@ -792,15 +791,15 @@ void BindVec2(const Vec2i& vec)
     SQUserPointer p = 0;
     sq_getinstanceup(g_VM, -1, &p, 0);
     assert(p);
-    new (p) Vec2i(vec);
+    new (p) Vec2f(vec);
 }
 
 //-----------------------------------------------------------------
-Vec2i* GetVec2(SQInteger idx)
+Vec2f* GetVec2(SQInteger idx)
 {
     SQUserPointer p = 0;
     if (SQ_SUCCEEDED(sq_getinstanceup(g_VM, idx, &p, TT_VEC2))) {
-        return (Vec2i*)p;
+        return (Vec2f*)p;
     }
     return 0;
 }
@@ -850,7 +849,7 @@ static void init_vec2_class()
 {
     sq_newclass(g_VM, SQFalse); // create class
     sq_settypetag(g_VM, -1, TT_VEC2);
-    sq_setclassudsize(g_VM, -1, sizeof(Vec2i));
+    sq_setclassudsize(g_VM, -1, sizeof(Vec2f));
 
     // define methods
     for (int i = 0; script_vec2_methods[i].funcname != 0; i++) {
@@ -1215,7 +1214,7 @@ static SQInteger script_stream_writeString(HSQUIRRELVM v)
     SETUP_STREAM_OBJECT()
     CHECK_NARGS(1)
     GET_ARG_STRING(1, str)
-    int len = strlen(str); // assuming sizeof(SQChar) == 1
+    int len = sq_getsize(v, 2);
     if (len > 0) {
         if (This->write(str, len) != len) {
             THROW_ERROR("Write error")
@@ -1341,15 +1340,19 @@ static SQInteger script_blob_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
-// Blob([size = 0])
+// Blob([size = 0, value = 0])
 static SQInteger script_blob_constructor(HSQUIRRELVM v)
 {
     SETUP_BLOB_OBJECT()
     GET_OPTARG_INT(1, size, 0)
+    GET_OPTARG_INT(2, value, -1)
     if (size < 0) {
         THROW_ERROR("Invalid size")
     }
     This = Blob::Create(size);
+    if (value >= 0) {
+        This->reset(value);
+    }
     sq_setinstanceup(v, 1, (SQUserPointer)This);
     sq_setreleasehook(v, 1, script_blob_destructor);
     RET_VOID()
@@ -1362,7 +1365,7 @@ static SQInteger script_blob_FromString(HSQUIRRELVM v)
     CHECK_NARGS(1)
     GET_ARG_STRING(1, string)
     BlobPtr blob = Blob::Create();
-    int len = strlen(string);
+    int len = sq_getsize(v, 2);
     if (len > 0) {
         blob->assign(string, len);
     }
@@ -1834,6 +1837,26 @@ static SQInteger script_file_destructor(SQUserPointer p, SQInteger size)
 }
 
 //-----------------------------------------------------------------
+// File.Open(filename [, mode = File.IN])
+static SQInteger script_file_Open(HSQUIRRELVM v)
+{
+    CHECK_MIN_NARGS(1)
+    GET_ARG_STRING(1, filename)
+    GET_OPTARG_INT(2, mode, IFile::IN)
+    if (mode != IFile::IN  &&
+        mode != IFile::OUT &&
+        mode != IFile::APPEND)
+    {
+        THROW_ERROR("Invalid mode")
+    }
+    FilePtr file = OpenFile(filename, mode);
+    if (!file) {
+        THROW_ERROR1("Could not open file '%s'", filename)
+    }
+    RET_FILE(file.get())
+}
+
+//-----------------------------------------------------------------
 // File.getName()
 static SQInteger script_file_getName(HSQUIRRELVM v)
 {
@@ -1907,6 +1930,7 @@ static ScriptFuncReg script_file_methods[] = {
 
 //-----------------------------------------------------------------
 static ScriptFuncReg script_file_static_methods[] = {
+    {"Open",        "File.Open",        script_file_Open        },
     {0,0}
 };
 
@@ -1957,26 +1981,6 @@ static void init_file_class()
 }
 
 /*********************** GLOBAL FUNCTIONS *************************/
-
-//-----------------------------------------------------------------
-// OpenFile(filename [, mode = File.IN])
-static SQInteger script_OpenFile(HSQUIRRELVM v)
-{
-    CHECK_MIN_NARGS(1)
-    GET_ARG_STRING(1, filename)
-    GET_OPTARG_INT(2, mode, IFile::IN)
-    if (mode != IFile::IN  &&
-        mode != IFile::OUT &&
-        mode != IFile::APPEND)
-    {
-        THROW_ERROR("Invalid mode")
-    }
-    FilePtr file = OpenFile(filename, mode);
-    if (!file) {
-        THROW_ERROR("Could not open file")
-    }
-    RET_FILE(file.get())
-}
 
 //-----------------------------------------------------------------
 // DoesFileExist(filename)
@@ -2074,7 +2078,6 @@ static SQInteger script_GetFileList(HSQUIRRELVM v)
 
 //-----------------------------------------------------------------
 static ScriptFuncReg script_io_functions[] = {
-    {"OpenFile",        "OpenFile",         script_OpenFile         },
     {"DoesFileExist",   "DoesFileExist",    script_DoesFileExist    },
     {"IsRegularFile",   "IsRegularFile",    script_IsRegularFile    },
     {"IsDirectory",     "IsDirectory",      script_IsDirectory      },
@@ -2706,6 +2709,26 @@ static SQInteger script_texture_Load(HSQUIRRELVM v)
 }
 
 //-----------------------------------------------------------------
+// Texture.LoadFromStream(stream)
+static SQInteger script_texture_LoadFromStream(HSQUIRRELVM v)
+{
+    CHECK_NARGS(1)
+    GET_ARG_STREAM(1, stream)
+    if (!IsWindowOpen()) {
+        THROW_ERROR("Invalid video state")
+    }
+    CanvasPtr image = LoadImage(stream);
+    if (!image) {
+        THROW_ERROR("Could not load image")
+    }
+    TexturePtr texture = CreateTexture(image.get());
+    if (!texture) {
+        THROW_ERROR("Could not create texture")
+    }
+    RET_TEXTURE(texture.get())
+}
+
+//-----------------------------------------------------------------
 // Texture.updatePixels(new_pixels [, dst_rect])
 static SQInteger script_texture_updatePixels(HSQUIRRELVM v)
 {
@@ -2897,9 +2920,10 @@ static ScriptFuncReg script_texture_methods[] = {
 
 //-----------------------------------------------------------------
 static ScriptFuncReg script_texture_static_methods[] = {
-    {"Load",            "Texture.Load",         script_texture_Load         },
-    {"_dump",           "Texture._dump",        script_texture__dump        },
-    {"_load",           "Texture._load",        script_texture__load        },
+    {"Load",            "Texture.Load",            script_texture_Load             },
+    {"LoadFromStream",  "Texture.LoadFromStream",  script_texture_LoadFromStream   },
+    {"_dump",           "Texture._dump",           script_texture__dump            },
+    {"_load",           "Texture._load",           script_texture__load            },
     {0,0}
 };
 
@@ -4027,7 +4051,7 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
 
         case Event::MOUSE_BUTTON_DOWN:
         case Event::MOUSE_BUTTON_UP:
-            sq_pushstring(v, "mbutton", -1);
+            sq_pushstring(v, "button", -1);
             sq_pushinteger(v, event.mbutton.button);
             sq_newslot(v, -3, SQFalse);
             break;
@@ -4086,8 +4110,8 @@ static SQInteger script_GetEvent(HSQUIRRELVM v)
             sq_pushinteger(v, event.jhat.hat);
             sq_newslot(v, -3, SQFalse);
 
-            sq_pushstring(v, "state", -1);
-            sq_pushinteger(v, event.jhat.state);
+            sq_pushstring(v, "value", -1);
+            sq_pushinteger(v, event.jhat.value);
             sq_newslot(v, -3, SQFalse);
             break;
 
@@ -5019,7 +5043,7 @@ static SQInteger script_RequireScript(HSQUIRRELVM v)
 {
     CHECK_NARGS(1)
     GET_ARG_STRING(1, name)
-    if (strlen(name) == 0) {
+    if (sq_getsize(v, 2) == 0) {
         THROW_ERROR("Empty script name")
     }
 
@@ -5825,24 +5849,22 @@ void RunGame(const Log& log, const std::string& script, const std::vector<std::s
     int old_top = sq_gettop(g_VM); // save stack top
 
     // load script
-    if (DoesFileExist(script)) {
-        FilePtr file = OpenFile(script);
-        if (LoadObject(file.get())) { // try loading as bytecode
-            if (sq_gettype(g_VM, -1) != OT_CLOSURE) { // make sure the file actually contained a compiled script
-                log.error() << "Error loading main script '" << script << "' as bytecode";
-                sq_settop(g_VM, old_top);
-                return;
-            }
-        } else { // try compiling as plain text
-            file->seek(0); // LoadObject changed the stream position, set it back to beginning
-            if (!CompileStream(file.get(), file->getName())) {
-                log.error() << "Error compiling main script '" << script << "': " << g_LastCompileError;
-                sq_settop(g_VM, old_top);
-                return;
-            }
+    if (DoesFileExist(script + SCRIPT_FILE_EXT)) { // compile as plain-text script
+        FilePtr file = OpenFile(script + SCRIPT_FILE_EXT);
+        if (!CompileStream(file.get(), file->getName())) {
+            log.error() << "Error compiling main script '" << script << "': " << g_LastCompileError;
+            sq_settop(g_VM, old_top);
+            return;
         }
-    } else { // file does not exist
-        log.error() << "Main script '" << script << "' does not exist";
+    } else if (DoesFileExist(script + BYTECODE_FILE_EXT)) {
+        FilePtr file = OpenFile(script + BYTECODE_FILE_EXT);
+        if (!LoadObject(file.get()) || sq_gettype(g_VM, -1) != OT_CLOSURE) { // load as bytecode
+            log.error() << "Error loading main script '" << script << "' as bytecode";
+            sq_settop(g_VM, old_top);
+            return;
+        }
+    } else { // script file does not exist
+        log.error() << "Main script '" << script << "' not found";
         sq_settop(g_VM, old_top);
         return;
     }

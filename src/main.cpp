@@ -104,13 +104,7 @@ int main(int argc, char* argv[])
     // run game
     log.info() << "Run game";
     try {
-        if (DoesFileExist(config.MainScript + ".bytecode")) {
-            RunGame(log, config.MainScript + ".bytecode", config.GameArgs);
-        } else if (DoesFileExist(config.MainScript + ".script")) {
-            RunGame(log, config.MainScript + ".script", config.GameArgs);
-        } else {
-            log.error() << "Main script '" << config.MainScript << "' does not exist";
-        }
+        RunGame(log, config.MainScript, config.GameArgs);
     } catch (const std::exception& e) {
         log.error() << "Exception caught: " << (e.what() ? e.what() : "N/A");
     } catch (...) {
