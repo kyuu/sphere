@@ -1,5 +1,13 @@
 // ---------------------------------------------------
 class WindowStyle {
+
+    constructor(background_mode, corner_colors, edge_offsets, images_) {
+        backgroundMode = background_mode;
+        cornerColors   = corner_colors;
+        edgeOffsets    = edge_offsets;
+        images         = images_;
+    }
+
     backgroundMode = null; // 0 = tiled, 1 = stretched, 2 = gradient (uses corner colors), 3 = tiled with gradient, 4 = stretched with gradient
     cornerColors   = null; // upper left, upper right, lower left, lower right
     edgeOffsets    = null; // left, top, right, bottom
@@ -59,13 +67,7 @@ function WindowStyle::Load(filename) {
         images[i] = Texture(image);
     }
 
-    local ws = WindowStyle();
-    ws.backgroundMode = background_mode;
-    ws.cornerColors   = corner_colors;
-    ws.edgeOffsets    = edge_offsets;
-    ws.images         = images;
-
-    return ws;
+    return WindowStyle(background_mode, corner_colors, edge_offsets, images);
 }
 
 // ---------------------------------------------------

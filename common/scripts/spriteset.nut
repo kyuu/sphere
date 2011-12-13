@@ -1,5 +1,17 @@
 // ---------------------------------------------------
 class SpriteSet {
+
+    constructor(frame_width, frame_height, base_x1, base_y1, base_x2, base_y2, images_, directions_) {
+        frameWidth  = frame_width;
+        frameHeight = frame_height;
+        baseX1      = base_x1;
+        baseY1      = base_y1;
+        baseX2      = base_x2;
+        baseY2      = base_y2;
+        images      = images_;
+        directions  = directions_;
+    }
+
     frameWidth  = null;
     frameHeight = null;
     baseX1      = null;
@@ -92,16 +104,5 @@ function SpriteSet::Load(filename) {
 
     }
 
-    // create spriteset
-    local ss = Spriteset();
-    ss.frameWidth  = frame_width;
-    ss.frameHeight = frame_height;
-    ss.baseX1      = base_x1;
-    ss.baseY1      = base_y1;
-    ss.baseX2      = base_x2;
-    ss.baseY2      = base_y2;
-    ss.images      = images;
-    ss.directions  = directions;
-
-    return ss;
+    return Spriteset(frame_width, frame_height, base_x1, base_y1, base_x2, base_y2, images, directions);
 }

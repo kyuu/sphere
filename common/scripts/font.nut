@@ -1,5 +1,6 @@
 // ---------------------------------------------------
 class Font {
+
     constructor(images_) {
         images    = images_;
         maxHeight = 0;
