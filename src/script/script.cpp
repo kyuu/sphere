@@ -9,6 +9,7 @@
 #include <sqstdstring.h>
 #include "../common/ArrayPtr.hpp"
 #include "../error.hpp"
+#include "../version.hpp"
 #include "../system/system.hpp"
 #include "../io/endian.hpp"
 #include "../io/data.hpp"
@@ -5694,6 +5695,11 @@ static ScriptFuncReg script_system_functions[] = {
 
 //-----------------------------------------------------------------
 static ScriptConstReg script_system_constants[] = {
+    {"INT_MIN",         INT_MIN         },
+    {"INT_MAX",         INT_MAX         },
+    {"SPHERE_MAJOR",    SPHERE_MAJOR    },
+    {"SPHERE_MINOR",    SPHERE_MAJOR    },
+    {"SPHERE_PATCH",    SPHERE_MAJOR    },
     {0,0}
 };
 
@@ -5714,6 +5720,10 @@ static void register_system_api()
         sq_pushinteger(g_VM, script_system_constants[i].value);
         sq_newslot(g_VM, -3, SQFalse);
     }
+
+    sq_pushstring(g_VM, "SPHERE_AFFIX", -1);
+    sq_pushstring(g_VM, SPHERE_AFFIX, -1);
+    sq_newslot(g_VM, -3, SQFalse);
 }
 
 /******************************************************************

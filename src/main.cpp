@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
     log.open("engine.log");
 
     // print sphere version
-    log.info() << "Sphere Engine " << SPHERE_VERSION_STRING << " " << SPHERE_VERSION_AFFIX;
+    log.info() << "Sphere Engine " << SPHERE_VERSION_STRING << " " << SPHERE_AFFIX;
 
     // initialize filesystem
     log.info() << "Initialize filesystem";

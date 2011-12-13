@@ -67,7 +67,7 @@ bool OpenWindow(int width, int height, bool fullscreen)
 
     // build default window title
     std::ostringstream oss;
-    oss << "Sphere " << SPHERE_MAJOR << "." << SPHERE_MINOR << " " << SPHERE_VERSION_AFFIX;
+    oss << "Sphere " << SPHERE_MAJOR << "." << SPHERE_MINOR << " " << SPHERE_AFFIX;
 
     // setup flags
     Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
