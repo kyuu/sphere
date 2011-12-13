@@ -5698,8 +5698,8 @@ static ScriptConstReg script_system_constants[] = {
     {"INT_MIN",         INT_MIN         },
     {"INT_MAX",         INT_MAX         },
     {"SPHERE_MAJOR",    SPHERE_MAJOR    },
-    {"SPHERE_MINOR",    SPHERE_MAJOR    },
-    {"SPHERE_PATCH",    SPHERE_MAJOR    },
+    {"SPHERE_MINOR",    SPHERE_MINOR    },
+    {"SPHERE_PATCH",    SPHERE_PATCH    },
     {0,0}
 };
 
