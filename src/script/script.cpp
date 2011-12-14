@@ -4353,17 +4353,17 @@ static ScriptFuncReg script_input_functions[] = {
 static ScriptConstReg script_input_constants[] = {
 
     // event constants
-    {"KEY_DOWN",             Event::KEY_DOWN          },
-    {"KEY_UP",               Event::KEY_UP            },
-    {"MOUSE_BUTTON_DOWN",    Event::MOUSE_BUTTON_DOWN },
-    {"MOUSE_BUTTON_UP",      Event::MOUSE_BUTTON_UP   },
-    {"MOUSE_MOTION",         Event::MOUSE_MOTION      },
-    {"MOUSE_WHEEL_MOTION",   Event::MOUSE_WHEEL_MOTION},
-    {"JOY_BUTTON_DOWN",      Event::JOY_BUTTON_DOWN   },
-    {"JOY_BUTTON_UP",        Event::JOY_BUTTON_UP     },
-    {"JOY_AXIS_MOTION",      Event::JOY_AXIS_MOTION   },
-    {"JOY_HAT_MOTION",       Event::JOY_HAT_MOTION    },
-    {"APP_QUIT",             Event::APP_QUIT          },
+    {"KEY_DOWN_EVENT",             Event::KEY_DOWN          },
+    {"KEY_UP_EVENT",               Event::KEY_UP            },
+    {"MOUSE_BUTTON_DOWN_EVENT",    Event::MOUSE_BUTTON_DOWN },
+    {"MOUSE_BUTTON_UP_EVENT",      Event::MOUSE_BUTTON_UP   },
+    {"MOUSE_MOTION_EVENT",         Event::MOUSE_MOTION      },
+    {"MOUSE_WHEEL_MOTION_EVENT",   Event::MOUSE_WHEEL_MOTION},
+    {"JOY_BUTTON_DOWN_EVENT",      Event::JOY_BUTTON_DOWN   },
+    {"JOY_BUTTON_UP_EVENT",        Event::JOY_BUTTON_UP     },
+    {"JOY_AXIS_MOTION_EVENT",      Event::JOY_AXIS_MOTION   },
+    {"JOY_HAT_MOTION_EVENT",       Event::JOY_HAT_MOTION    },
+    {"APP_QUIT_EVENT",             Event::APP_QUIT          },
 
     // key constants
     {"KEY_A",               KEY_A               },
