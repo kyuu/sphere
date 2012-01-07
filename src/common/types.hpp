@@ -1,6 +1,8 @@
-#ifndef TYPES_HPP
-#define TYPES_HPP
+#ifndef SPHERE_TYPES_HPP
+#define SPHERE_TYPES_HPP
 
+
+namespace sphere {
 
 #ifdef _MSC_VER
     typedef signed   __int8  i8;
@@ -23,10 +25,12 @@
     typedef uint64_t u64;
 #endif
 
-typedef float  f32;
-typedef double f64;
+    typedef float  f32;
+    typedef double f64;
 
-typedef unsigned int uint;
+    typedef unsigned int uint;
+
+}
 
 
 #endif

@@ -1,23 +1,25 @@
-#ifndef ITEXTURE_HPP
-#define ITEXTURE_HPP
+#ifndef SPHERE_ITEXTURE_HPP
+#define SPHERE_ITEXTURE_HPP
 
 #include "../common/IRefCounted.hpp"
 #include "../common/RefPtr.hpp"
-#include "../graphics/Canvas.hpp"
+#include "../base/Dim2.hpp"
 
 
-class ITexture : public IRefCounted {
-public:
-    virtual int getWidth() const = 0;
-    virtual int getHeight() const = 0;
-    virtual bool updatePixels(Canvas* new_pixels, Recti* dst_rect = 0) = 0;
-    virtual Canvas* createCanvas() const = 0;
+namespace sphere {
 
-protected:
-    ~ITexture() { }
-};
+    class ITexture : public IRefCounted {
+    public:
+        virtual const Dim2i& getTextureSize() const = 0;
+        virtual const Dim2i& getSize() const = 0;
 
-typedef RefPtr<ITexture> TexturePtr;
+    protected:
+        ~ITexture() { }
+    };
+
+    typedef RefPtr<ITexture> TexturePtr;
+
+} // namespace sphere
 
 
 #endif

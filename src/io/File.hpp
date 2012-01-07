@@ -1,44 +1,47 @@
-#ifndef FILE_HPP
-#define FILE_HPP
+#ifndef SPHERE_FILE_HPP
+#define SPHERE_FILE_HPP
 
 #include <cstdio>
 #include <string>
-#include "../common/types.hpp"
 #include "../common/RefImpl.hpp"
-#include "../io/IFile.hpp"
+#include "IFile.hpp"
 
 
-class File : public RefImpl<IFile> {
-public:
-    static File* Create();
+namespace sphere {
 
-    bool open(const std::string& filename, int mode = IFile::IN);
-    void setName(const std::string& name);
+    class File : public RefImpl<IFile> {
+    public:
+        static File* Create();
 
-    // IFile implementation
-    const std::string& getName() const;
+        bool open(const std::string& filename, int mode = IFile::FM_IN);
+        void setName(const std::string& name);
 
-    // IStream implementation
-    bool isOpen() const;
-    bool isReadable() const;
-    bool isWriteable() const;
-    bool close();
-    int  tell();
-    bool seek(int offset, int origin = IStream::BEG);
-    int  read(void* buffer, int size);
-    int  write(const void* buffer, int size);
-    bool flush();
-    bool eof();
+        // IFile implementation
+        const std::string& getName() const;
 
-private:
-    File();
-    virtual ~File();
+        // IStream implementation
+        bool isOpen() const;
+        bool isReadable() const;
+        bool isWriteable() const;
+        bool close();
+        int  tell();
+        bool seek(int offset, int origin = IStream::BEG);
+        int  read(void* buffer, int size);
+        int  write(const void* buffer, int size);
+        bool flush();
+        bool eof();
 
-private:
-    FILE* _file;
-    int _mode;
-    std::string _name;
-};
+    private:
+        File();
+        virtual ~File();
+
+    private:
+        FILE* _file;
+        int _mode;
+        std::string _name;
+    };
+
+} // namespace sphere
 
 
 #endif

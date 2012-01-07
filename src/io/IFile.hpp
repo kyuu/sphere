@@ -1,25 +1,30 @@
-#ifndef IFILE_HPP
-#define IFILE_HPP
+#ifndef SPHERE_IFILE_HPP
+#define SPHERE_IFILE_HPP
 
 #include <string>
 #include "../common/RefPtr.hpp"
 #include "IStream.hpp"
 
-class IFile : public IStream {
-public:
-    enum Mode {
-        IN = 0,
-        OUT,
-        APPEND,
+
+namespace sphere {
+
+    class IFile : public IStream {
+    public:
+        enum Mode {
+            FM_IN = 0,
+            FM_OUT,
+            FM_APPEND,
+        };
+
+        virtual const std::string& getName() const = 0;
+
+    protected:
+        ~IFile() { }
     };
 
-    virtual const std::string& getName() const = 0;
+    typedef RefPtr<IFile> FilePtr;
 
-protected:
-    ~IFile() { }
-};
-
-typedef RefPtr<IFile> FilePtr;
+} // namespace sphere
 
 
 #endif

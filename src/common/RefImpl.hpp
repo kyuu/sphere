@@ -1,27 +1,31 @@
-#ifndef REFIMPL_HPP
-#define REFIMPL_HPP
+#ifndef SPHERE_REFIMPL_HPP
+#define SPHERE_REFIMPL_HPP
 
 
-template<class T>
-class RefImpl : public T {
-public:
-    virtual void grab() {
-        ++_count;
-    }
+namespace sphere {
 
-    virtual void drop() {
-        if (--_count == 0) {
-            delete this;
+    template<class T>
+    class RefImpl : public T {
+    public:
+        virtual void grab() {
+            ++_count;
         }
-    }
 
-protected:
-    RefImpl() : _count(1) { }
-    virtual ~RefImpl() { }
+        virtual void drop() {
+            if (--_count == 0) {
+                delete this;
+            }
+        }
 
-private:
-    int _count;
-};
+    protected:
+        RefImpl() : _count(1) { }
+        virtual ~RefImpl() { }
+
+    private:
+        int _count;
+    };
+
+}
 
 
 #endif

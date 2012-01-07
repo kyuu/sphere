@@ -1,5 +1,5 @@
-#ifndef PLATFORM_HPP
-#define PLATFORM_HPP
+#ifndef SPHERE_PLATFORM_HPP
+#define SPHERE_PLATFORM_HPP
 
 
 #if defined(_WIN32)
@@ -9,10 +9,7 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #  define SPHERE_MAC_OS_X
 #else
-#  ifdef SPHERE_CAANOO
-#  else
-#    error Platform not supported
-#  endif
+#  error Platform not supported
 #endif
 
 #if defined(_WIN32)

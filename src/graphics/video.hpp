@@ -1,45 +1,107 @@
-#ifndef VIDEO_HPP
-#define VIDEO_HPP
+#ifndef SPHERE_VIDEO_HPP
+#define SPHERE_VIDEO_HPP
 
+#include <string>
 #include <vector>
 #include "../Log.hpp"
-#include "../graphics/Canvas.hpp"
-#include "../graphics/RGBA.hpp"
-#include "../core/Vec2.hpp"
-#include "../core/Rect.hpp"
-#include "../core/Dim2.hpp"
+#include "../base/Vec2.hpp"
+#include "../base/Rect.hpp"
+#include "../base/Dim2.hpp"
 #include "ITexture.hpp"
+#include "Canvas.hpp"
+#include "RGBA.hpp"
 
 
-void GetSupportedVideoModes(std::vector<Dim2i>& out);
-bool OpenWindow(int width, int height, bool fullscreen);
-bool IsWindowOpen();
-int  GetWindowWidth();
-int  GetWindowHeight();
-bool IsWindowFullscreen();
-bool SetWindowFullscreen(bool fullscreen);
-const char* GetWindowTitle();
-void SetWindowTitle(const char* title);
-void SetWindowIcon(Canvas* canvas);
-void ShowFrame();
-bool GetFrameScissor(Recti& scissor);
-void SetFrameScissor(const Recti& scissor);
-ITexture* CreateTexture(Canvas* pixels);
-Canvas* CloneFrame(Recti* section = 0);
+namespace sphere {
+    namespace video {
 
-// rendering
-void DrawPoint(const Vec2i& pos, const RGBA& col);
-void DrawLine(Vec2i pos[2], RGBA col[2]);
-void DrawTriangle(Vec2i pos[3], RGBA col[3]);
-void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], const RGBA& mask = RGBA(255, 255, 255));
-void DrawRect(const Recti& rect, RGBA col[4]);
-void DrawImage(ITexture* texture, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
-void DrawSubImage(ITexture* texture, const Recti& src_rect, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
-void DrawImageQuad(ITexture* texture, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
-void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
+        // display
+        const Dim2i& GetDefaultDisplayMode();
+        const std::vector<Dim2i>& GetDisplayModes();
 
-bool InitVideo(const Log& log);
-void DeinitVideo();
+        // window
+        union WindowEvent {
+            enum Type {
+                KEY_PRESS = 0,
+                KEY_RELEASE,
+
+                MOUSE_BUTTON_PRESS,
+                MOUSE_BUTTON_RELEASE,
+                MOUSE_MOTION,
+                MOUSE_WHEEL_MOTION,
+
+                WINDOW_CLOSE,
+            };
+
+            int type;
+
+            struct {
+                int type;
+                int which;
+            } key;
+
+            union {
+                struct {
+                    int type;
+                    int which;
+                } button;
+
+                struct {
+                    int type;
+                    int x;
+                    int y;
+                } motion;
+
+                struct {
+                    int type;
+                    int delta;
+                } wheel;
+
+            } mouse;
+        };
+
+        bool SetWindowMode(int width, int height, bool fullScreen);
+        const Dim2i& GetWindowSize();
+        bool IsWindowFullScreen();
+        bool IsWindowActive();
+        const std::string& GetWindowTitle();
+        void SetWindowTitle(const std::string& title);
+        void SetWindowIcon(Canvas* icon);
+        void SwapWindowBuffers();
+        bool PeekWindowEvent(int event = -1);
+        bool GetWindowEvent(WindowEvent& event);
+        void ClearWindowEvents();
+
+        // frame buffer
+        void GetFrameScissor(Recti& scissor);
+        bool SetFrameScissor(const Recti& scissor);
+        Canvas* CloneFrame(Recti* section = 0);
+
+        // texture
+        ITexture* CreateTexture(int width, int height, const RGBA* pixels = 0);
+        bool UpdateTexturePixels(ITexture* texture, Canvas* newPixels, Recti* section = 0);
+        Canvas* GrabTexturePixels(ITexture* texture);
+
+        // drawing
+        void DrawPoint(const Vec2i& pos, const RGBA& col);
+        void DrawLine(Vec2i pos[2], RGBA col[2]);
+        void DrawTriangle(Vec2i pos[3], RGBA col[3]);
+        void DrawRect(const Recti& rect, RGBA col[4]);
+        void DrawImage(ITexture* image, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
+        void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, const RGBA& mask = RGBA(255, 255, 255));
+        void DrawImageQuad(ITexture* image, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
+        void DrawSubImageQuad(ITexture* image, const Recti& src_rect, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
+        void DrawTexturedTriangle(ITexture* texture, Vec2i texcoord[3], Vec2i pos[3], const RGBA& mask = RGBA(255, 255, 255));
+
+        namespace internal {
+
+            bool InitVideo(const Log& log);
+            void DeinitVideo();
+            void ProcessWindowEvents();
+
+        } // namespace internal
+    } // namespace video
+} // namespace sphere
 
 
 #endif

@@ -1,32 +1,42 @@
-#ifndef FILESYSTEM_HPP
-#define FILESYSTEM_HPP
+#ifndef SPHERE_FILESYSTEM_HPP
+#define SPHERE_FILESYSTEM_HPP
 
 #include <vector>
 #include <string>
 #include "../Log.hpp"
-#include "../io/IFile.hpp"
+#include "IFile.hpp"
 
 
-bool   ComplementPath(std::string& path);
-IFile* OpenFile(const std::string& filename, int mode = IFile::IN);
-bool   DoesFileExist(const std::string& filename);
-bool   IsRegularFile(const std::string& filename);
-bool   IsDirectory(const std::string& filename);
-int    GetFileModTime(const std::string& filename);
-bool   CreateDirectory(const std::string& directory);
-bool   RemoveFile(const std::string& filename);
-bool   RenameFile(const std::string& filenameFrom, const std::string& filenameTo);
-bool   GetFileList(const std::string& directory, std::vector<std::string>& fileList);
+namespace sphere {
+    namespace io {
+        namespace filesystem {
 
-bool InitFilesystem(const Log& log);
-void DeinitFilesystem();
-const std::string& GetEnginePath();
-std::string GetCurrentPath();
-bool SetCurrentPath(const std::string& p);
-const std::string& GetCommonPath();
-void SetCommonPath(const std::string& p);
-const std::string& GetDataPath();
-void SetDataPath(const std::string& p);
+            bool   ComplementPath(std::string& path);
+            IFile* OpenFile(const std::string& filename, int mode = IFile::FM_IN);
+            bool   FileExists(const std::string& filename);
+            bool   IsFile(const std::string& filename);
+            bool   IsDirectory(const std::string& filename);
+            int    GetFileSize(const std::string& filename);
+            int    GetFileModTime(const std::string& filename);
+            bool   CreateDirectory(const std::string& directory);
+            bool   RemoveFile(const std::string& filename);
+            bool   RenameFile(const std::string& filenameFrom, const std::string& filenameTo);
+            bool   EnumerateFiles(const std::string& directory, std::vector<std::string>& fileList);
+
+            namespace internal {
+
+                bool InitFileSystem(const Log& log, const std::string& commonPath, const std::string& dataPath);
+                void DeinitFileSystem();
+                const std::string& GetEnginePath();
+                const std::string& GetCommonPath();
+                const std::string& GetDataPath();
+                std::string GetCurrentPath();
+                bool SetCurrentPath(const std::string& p);
+
+            } // namespace internal
+        } // namespace filesystem
+    } // namespace io
+} // namespace sphere
 
 
 #endif

@@ -6,21 +6,25 @@
 #include "IniFile.hpp"
 
 
-struct Config {
+namespace sphere {
 
-    std::string CommonPath;
-    std::string DataPath;
-    std::string MainScript;
-    std::vector<std::string> GameArgs;
+    struct Config {
 
-    explicit Config(const std::string& filename) {
-        IniFile ini(filename);
-        CommonPath = ini.readString("Engine", "CommonPath", "common");
-        DataPath   = ini.readString("Engine", "DataPath",   "data");
-        MainScript = ini.readString("Engine", "MainScript", "game");
-    }
+        std::string CommonPath;
+        std::string DataPath;
+        std::string MainScript;
+        std::vector<std::string> GameArgs;
 
-};
+        explicit Config(const std::string& filename) {
+            IniFile ini(filename);
+            CommonPath = ini.readString("Engine", "CommonPath", "common");
+            DataPath   = ini.readString("Engine", "DataPath",   "data");
+            MainScript = ini.readString("Engine", "MainScript", "game");
+        }
+
+    };
+
+} // namespace sphere
 
 
 #endif

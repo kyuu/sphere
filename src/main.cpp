@@ -1,80 +1,24 @@
 #include <cstdlib>
 #include <vector>
 #include <string>
-#include <SDL.h>
-#include "version.hpp"
+#include "io/filesystem.hpp"
+#include "system/system.hpp"
+#include "graphics/video.hpp"
+#include "audio/audio.hpp"
+#include "input/input.hpp"
+#include "script/vm.hpp"
 #include "Log.hpp"
 #include "Config.hpp"
-#include "system/system.hpp"
-#include "io/filesystem.hpp"
-#include "graphics/video.hpp"
-#include "sound/audio.hpp"
-#include "input/input.hpp"
-#include "script/script.hpp"
+#include "version.hpp"
+
 
 //-----------------------------------------------------------------
 int main(int argc, char* argv[])
 {
-    Log log;
-    log.open("engine.log");
-
-    // print sphere version
-    log.info() << "Sphere Engine " << SPHERE_VERSION_STRING;
-
-    // initialize filesystem
-    log.info() << "Initialize filesystem";
-    if (!InitFilesystem(log)) {
-        log.error() << "Could not initialize filesystem";
-        return 0;
-    }
-    atexit(DeinitFilesystem);
-
-    // initialize system
-    log.info() << "Initialize system";
-    if (!InitSystem(log)) {
-        log.error() << "Could not initialize system";
-        return 0;
-    }
-    atexit(DeinitSystem);
-
-    // initialize video
-    log.info() << "Initialize video";
-    if (!InitVideo(log)) {
-        log.error() << "Could not initialize video";
-        return 0;
-    }
-    atexit(DeinitVideo);
-
-    // initialize audio
-    log.info() << "Initialize audio";
-    if (!InitAudio(log)) {
-        log.error() << "Could not initialize audio";
-        return 0;
-    }
-    atexit(DeinitAudio);
-
-    // initialize input
-    log.info() << "Initialize input";
-    if (!InitInput(log)) {
-        log.error() << "Could not initialize input";
-        return 0;
-    }
-    atexit(DeinitInput);
-
-    // initialize script
-    log.info() << "Initialize script";
-    if (!InitScript(log)) {
-        log.error() << "Could not initialize script";
-        return 0;
-    }
-    atexit(DeinitScript);
-
     // load configuration
-    log.info() << "Load configuration";
-    Config config("engine.cfg");
+    sphere::Config config("engine.cfg");
 
     // process command line options
-    log.info() << "Process command line options";
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "-common" && i + 1 < argc) {
@@ -92,24 +36,111 @@ int main(int argc, char* argv[])
         }
     }
 
-    // set paths and enter game directory
-    SetCommonPath(config.CommonPath);
-    SetDataPath(config.DataPath);
-    log.info() << "Enter game directory";
-    if (!SetCurrentPath(config.DataPath)) {
-        log.error() << "Could not enter game directory '" << config.DataPath << "'";
+    // open log
+    sphere::Log log("engine.log");
+
+    // print sphere version
+    log.info() << "Sphere Engine " << SPHERE_VERSION_STRING << " " << SPHERE_AFFIX;
+
+    // initialize file system
+    log.info() << "Initializing file system";
+    if (!sphere::io::filesystem::internal::InitFileSystem(log, config.CommonPath, config.DataPath)) {
+        log.error() << "Could not initialize file system";
+        return 0;
+    }
+    atexit(sphere::io::filesystem::internal::DeinitFileSystem);
+
+    // initialize system
+    log.info() << "Initializing system";
+    if (!sphere::system::internal::InitSystem(log)) {
+        log.error() << "Could not initialize system";
+        return 0;
+    }
+    atexit(sphere::system::internal::DeinitSystem);
+
+    // initialize video
+    log.info() << "Initializing video";
+    if (!sphere::video::internal::InitVideo(log)) {
+        log.error() << "Could not initialize video";
+        return 0;
+    }
+    atexit(sphere::video::internal::DeinitVideo);
+
+    // initialize audio
+    log.info() << "Initializing audio";
+    if (!sphere::audio::internal::InitAudio(log)) {
+        log.error() << "Could not initialize audio";
+        return 0;
+    }
+    atexit(sphere::audio::internal::DeinitAudio);
+
+    // initialize input
+    log.info() << "Initializing input";
+    if (!sphere::input::internal::InitInput(log)) {
+        log.error() << "Could not initialize input";
+        return 0;
+    }
+    atexit(sphere::input::internal::DeinitInput);
+
+    // initialize vm
+    log.info() << "Initializing script VM";
+    if (!sphere::script::internal::InitVM(log)) {
+        log.error() << "Could not initialize script VM";
+        return 0;
+    }
+    atexit(sphere::script::internal::DeinitVM);
+
+    // run game
+    log.info() << "Running game";
+
+    // load main script
+    if (sphere::io::filesystem::FileExists(config.MainScript + SCRIPT_FILE_EXT)) {
+        std::string filename = config.MainScript + SCRIPT_FILE_EXT;
+        sphere::FilePtr file = sphere::io::filesystem::OpenFile(filename);
+        if (!sphere::script::CompileStream(file.get(), file->getName())) {
+            log.error() << "Could not compile '" << filename << "': " << sphere::script::GetLastError();
+            return 0;
+        }
+    } else if (sphere::io::filesystem::FileExists(config.MainScript + BYTECODE_FILE_EXT)) {
+        std::string filename = config.MainScript + BYTECODE_FILE_EXT;
+        sphere::FilePtr file = sphere::io::filesystem::OpenFile(filename);
+        if (!sphere::script::LoadObject(file.get()) || sq_gettype(sphere::script::GetVM(), -1) != OT_CLOSURE) {
+            log.error() << "Could not load bytecode from '" << filename << "': " << sphere::script::GetLastError();
+            return 0;
+        }
+    } else {
+        log.error() << "Could not find main script '" << config.MainScript << "'";
         return 0;
     }
 
-    // run game
-    log.info() << "Run game";
-    try {
-        RunGame(log, config.MainScript, config.GameArgs);
-    } catch (const std::exception& e) {
-        log.error() << "Exception caught: " << (e.what() ? e.what() : "N/A");
-    } catch (...) {
-        log.error() << "Unknown exception caught";
+    // evaluate main script
+    sq_pushroottable(sphere::script::GetVM()); // this
+    if (!SQ_SUCCEEDED(sq_call(sphere::script::GetVM(), 1, SQFalse, SQTrue))) {
+        log.error() << "Could not evaluate main script: " << sphere::script::GetLastError();
+        return 0;
     }
+
+    // call main function
+    sq_pushroottable(sphere::script::GetVM());
+    sq_pushstring(sphere::script::GetVM(), "main", -1);
+    if (!SQ_SUCCEEDED(sq_rawget(sphere::script::GetVM(), -2)) || sq_gettype(sphere::script::GetVM(), -1) != OT_CLOSURE) {
+        log.error() << "Could not call main function, symbol not defined";
+        return 0;
+    }
+    if (sq_gettype(sphere::script::GetVM(), -1) != OT_CLOSURE) {
+        log.error() << "Could not call main function, symbol defined, but is not a function";
+        return 0;
+    }
+    sq_pushroottable(sphere::script::GetVM()); // this
+    for (int i = 0; i < (int)config.GameArgs.size(); i++) {
+        sq_pushstring(sphere::script::GetVM(), config.GameArgs[i].c_str(), -1);
+    }
+    if (!SQ_SUCCEEDED(sq_call(sphere::script::GetVM(), 1 + config.GameArgs.size(), SQFalse, SQTrue))) {
+        log.error() << "Unhandled script exception: " << sphere::script::GetLastError();
+    }
+
+    // exit
+    log.info() << "Exiting";
 
     return 0;
 }
