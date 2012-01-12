@@ -18,13 +18,30 @@
 #include "../../io/imageio.hpp"
 #include "../video.hpp"
 
+#ifndef GL_FUNC_ADD_EXT
+#  define GL_FUNC_ADD_EXT 0x8006
+#endif
+
+#ifndef GL_FUNC_SUBTRACT_EXT
+#  define GL_FUNC_SUBTRACT_EXT 0x800A
+#endif
+
+#ifndef GL_FUNC_REVERSE_SUBTRACT_EXT
+#  define GL_FUNC_REVERSE_SUBTRACT_EXT 0x800B
+#endif
+
 #define DEFAULT_WINDOW_WIDTH  640
 #define DEFAULT_WINDOW_HEIGHT 480
 
-#define WINDOW_STYLE            (WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE)
+#define BASIC_WINDOW_STYLE      (WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE)
 #define FULLSCREEN_WINDOW_STYLE (WS_POPUP | WS_VISIBLE)
 
 #define EVENT_QUEUE_MAX_SIZE 1024
+
+
+//-----------------------------------------------------------------
+// GL extension function pointers
+void (APIENTRY *glBlendEquationEXT)(GLenum) = 0;
 
 
 namespace sphere {
@@ -35,6 +52,10 @@ namespace sphere {
             GLuint textureName;
             Dim2i  textureSize;
             Dim2i  size;
+
+            ~Texture() {
+                glDeleteTextures(1, &textureName);
+            }
 
             // ITexture implementation
             const Dim2i& getTextureSize() const {
@@ -47,7 +68,25 @@ namespace sphere {
 
         //-----------------------------------------------------------------
         // globals
+
+        //-----------------------------------------------------------------
+        // globals
         std::deque<WindowEvent> g_EventQueue;
+        Dim2i g_DefaultDisplayMode;
+        std::vector<Dim2i> g_DisplayModes;
+        WNDCLASS    g_WindowClass;
+        HWND        g_Window = 0;
+        Dim2i       g_WindowSize;
+        bool        g_WindowIsFullScreen = false;
+        std::string g_WindowTitle;
+        HDC         g_DeviceContext = 0;
+        HGLRC       g_GLContext = 0;
+        int         g_MaxTextureSize = 0;
+        bool        g_NPOTTexturesSupported = false;
+        int         g_BlendMode = BM_ALPHA;
+        GLuint      g_Capture = 0;
+        int         g_CaptureWidth = 0;
+        int         g_CaptureHeight = 0;
 
         static int WinKeyToSphereKey[256] = {
             /* 0x00 */ -1,
@@ -66,9 +105,9 @@ namespace sphere {
             /* 0x0D */ input::KEY_ENTER,
             /* 0x0E */ -1,
             /* 0x0F */ -1,
-            /* 0x10 */ -1,
-            /* 0x11 */ -1,
-            /* 0x12 */ -1,
+            /* 0x10 */ input::KEY_SHIFT,
+            /* 0x11 */ input::KEY_CTRL,
+            /* 0x12 */ input::KEY_ALT,
             /* 0x13 */ -1,
             /* 0x14 */ input::KEY_CAPSLOCK,
             /* 0x15 */ -1,
@@ -146,22 +185,22 @@ namespace sphere {
             /* 0x5D */ -1,
             /* 0x5E */ -1,
             /* 0x5F */ -1,
-            /* 0x60 */ input::KEY_NUMPAD_0,
-            /* 0x61 */ input::KEY_NUMPAD_1,
-            /* 0x62 */ input::KEY_NUMPAD_2,
-            /* 0x63 */ input::KEY_NUMPAD_3,
-            /* 0x64 */ input::KEY_NUMPAD_4,
-            /* 0x65 */ input::KEY_NUMPAD_5,
-            /* 0x66 */ input::KEY_NUMPAD_6,
-            /* 0x67 */ input::KEY_NUMPAD_7,
-            /* 0x68 */ input::KEY_NUMPAD_8,
-            /* 0x69 */ input::KEY_NUMPAD_9,
-            /* 0x6A */ input::KEY_MULTIPLY,
-            /* 0x6B */ input::KEY_ADD,
+            /* 0x60 */ -1, // KEY_NUMPAD_0,
+            /* 0x61 */ -1, // KEY_NUMPAD_1,
+            /* 0x62 */ -1, // KEY_NUMPAD_2,
+            /* 0x63 */ -1, // KEY_NUMPAD_3,
+            /* 0x64 */ -1, // KEY_NUMPAD_4,
+            /* 0x65 */ -1, // KEY_NUMPAD_5,
+            /* 0x66 */ -1, // KEY_NUMPAD_6,
+            /* 0x67 */ -1, // KEY_NUMPAD_7,
+            /* 0x68 */ -1, // KEY_NUMPAD_8,
+            /* 0x69 */ -1, // KEY_NUMPAD_9,
+            /* 0x6A */ -1, // KEY_MULTIPLY,
+            /* 0x6B */ -1, // KEY_ADD,
             /* 0x6C */ -1,
-            /* 0x6D */ input::KEY_SUBTRACT,
+            /* 0x6D */ -1, // KEY_SUBTRACT,
             /* 0x6E */ -1,
-            /* 0x6F */ input::KEY_DIVIDE,
+            /* 0x6F */ -1, // KEY_DIVIDE,
             /* 0x70 */ input::KEY_F1,
             /* 0x71 */ input::KEY_F2,
             /* 0x72 */ input::KEY_F3,
@@ -194,7 +233,7 @@ namespace sphere {
             /* 0x8D */ -1,
             /* 0x8E */ -1,
             /* 0x8F */ -1,
-            /* 0x90 */ input::KEY_NUMLOCK,
+            /* 0x90 */ -1, // KEY_NUMLOCK
             /* 0x91 */ -1,
             /* 0x92 */ -1,
             /* 0x93 */ -1,
@@ -210,12 +249,12 @@ namespace sphere {
             /* 0x9D */ -1,
             /* 0x9E */ -1,
             /* 0x9F */ -1,
-            /* 0xA0 */ input::KEY_LSHIFT,
-            /* 0xA1 */ input::KEY_RSHIFT,
-            /* 0xA2 */ input::KEY_LCTRL,
-            /* 0xA3 */ input::KEY_RCTRL,
-            /* 0xA4 */ input::KEY_LALT,
-            /* 0xA5 */ input::KEY_RALT,
+            /* 0xA0 */ -1,
+            /* 0xA1 */ -1,
+            /* 0xA2 */ -1,
+            /* 0xA3 */ -1,
+            /* 0xA4 */ -1,
+            /* 0xA5 */ -1,
             /* 0xA6 */ -1,
             /* 0xA7 */ -1,
             /* 0xA8 */ -1,
@@ -236,13 +275,13 @@ namespace sphere {
             /* 0xB7 */ -1,
             /* 0xB8 */ -1,
             /* 0xB9 */ -1,
-            /* 0xBA */ -1,
+            /* 0xBA */ input::KEY_OEM1,
             /* 0xBB */ input::KEY_PLUS,
             /* 0xBC */ input::KEY_COMMA,
             /* 0xBD */ input::KEY_MINUS,
             /* 0xBE */ input::KEY_PERIOD,
-            /* 0xBF */ -1,
-            /* 0xC0 */ -1,
+            /* 0xBF */ input::KEY_OEM2,
+            /* 0xC0 */ input::KEY_OEM3,
             /* 0xC1 */ -1,
             /* 0xC2 */ -1,
             /* 0xC3 */ -1,
@@ -269,14 +308,14 @@ namespace sphere {
             /* 0xD8 */ -1,
             /* 0xD9 */ -1,
             /* 0xDA */ -1,
-            /* 0xDB */ -1,
-            /* 0xDC */ -1,
-            /* 0xDD */ -1,
-            /* 0xDE */ -1,
+            /* 0xDB */ input::KEY_OEM4,
+            /* 0xDC */ input::KEY_OEM5,
+            /* 0xDD */ input::KEY_OEM6,
+            /* 0xDE */ input::KEY_OEM7,
             /* 0xDF */ -1,
             /* 0xE0 */ -1,
             /* 0xE1 */ -1,
-            /* 0xE2 */ -1,
+            /* 0xE2 */ input::KEY_OEM8,
             /* 0xE3 */ -1,
             /* 0xE4 */ -1,
             /* 0xE5 */ -1,
@@ -309,20 +348,6 @@ namespace sphere {
         };
 
         //-----------------------------------------------------------------
-        // globals
-        Dim2i g_DefaultDisplayMode;
-        std::vector<Dim2i> g_DisplayModes;
-        WNDCLASS    g_WindowClass;
-        HWND        g_Window = 0;
-        Dim2i g_WindowSize;
-        bool        g_WindowIsFullScreen = false;
-        std::string g_WindowTitle;
-        HDC         g_DeviceContext = 0;
-        HGLRC       g_GLContext = 0;
-        int         g_MaxTextureSize = 0;
-        bool        g_NonPowerOfTwoTexturesSupported = false;
-
-        //-----------------------------------------------------------------
         const Dim2i& GetDefaultDisplayMode()
         {
             return g_DefaultDisplayMode;
@@ -347,7 +372,7 @@ namespace sphere {
                     ChangeDisplaySettings(NULL, 0);
 
                     // set window style
-                    SetWindowLong(g_Window, GWL_STYLE, WINDOW_STYLE);
+                    SetWindowLong(g_Window, GWL_STYLE, BASIC_WINDOW_STYLE);
 
                     g_WindowIsFullScreen = false;
                 }
@@ -379,7 +404,7 @@ namespace sphere {
                 glLoadIdentity();
                 glTranslatef(0.375, 0.375, 0.0);
 
-                // change clipping rectangle
+                // reset clipping rectangle
                 glScissor(0, 0, width, height);
             }
 
@@ -427,7 +452,7 @@ namespace sphere {
                 ChangeDisplaySettings(NULL, 0);
 
                 // set window style
-                SetWindowLong(g_Window, GWL_STYLE, WINDOW_STYLE);
+                SetWindowLong(g_Window, GWL_STYLE, BASIC_WINDOW_STYLE);
 
                 // get adjusted metrics
                 RECT rect = {0, 0, width, height};
@@ -609,10 +634,65 @@ namespace sphere {
                 h = section->getHeight();
             }
 
+            // create canvas
             CanvasPtr canvas = Canvas::Create(w, h);
+
+            // copy pixels into canvas
             glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, canvas->getPixels());
+
+            // flip canvas
             canvas->flipHorizontally();
+
             return canvas.release();
+        }
+
+        //-----------------------------------------------------------------
+        int GetBlendMode()
+        {
+            return g_BlendMode;
+        }
+
+        //-----------------------------------------------------------------
+        bool SetBlendMode(int blendMode)
+        {
+            switch (blendMode) {
+                case BM_REPLACE:
+                    if (glBlendEquationEXT) {
+                        glBlendEquationEXT(GL_FUNC_ADD_EXT);
+                    }
+                    glBlendFunc(GL_ONE, GL_ZERO);
+                    break;
+                case BM_ALPHA:
+                    if (glBlendEquationEXT) {
+                        glBlendEquationEXT(GL_FUNC_ADD_EXT);
+                    }
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    break;
+                case BM_ADD:
+                    if (glBlendEquationEXT) {
+                        glBlendEquationEXT(GL_FUNC_ADD_EXT);
+                    }
+                    glBlendFunc(GL_ONE, GL_ONE);
+                    break;
+                case BM_SUBTRACT:
+                    if (!glBlendEquationEXT) {
+                        // subtractive blending needs glBlendEquationEXT
+                        return false;
+                    }
+                    glBlendEquationEXT(GL_FUNC_REVERSE_SUBTRACT_EXT);
+                    glBlendFunc(GL_ONE, GL_ONE);
+                    break;
+                case BM_MULTIPLY:
+                    if (glBlendEquationEXT) {
+                        glBlendEquationEXT(GL_FUNC_ADD_EXT);
+                    }
+                    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+                    break;
+                default:
+                    return false;
+            }
+            g_BlendMode = blendMode;
+            return true;
         }
 
         //-----------------------------------------------------------------
@@ -624,7 +704,8 @@ namespace sphere {
             int tex_w = width;
             int tex_h = height;
 
-            if (!g_NonPowerOfTwoTexturesSupported) {
+            // if NPOT textures are not supported, calculate a good texture size
+            if (!g_NPOTTexturesSupported) {
                 double log2_w = log10((double)tex_w) / log10(2.0);
                 double log2_h = log10((double)tex_h) / log10(2.0);
 
@@ -637,7 +718,7 @@ namespace sphere {
                 }
             }
 
-            // make sure texture is, at max, g_MaxTextureSize by g_MaxTextureSize
+            // make sure texture is, at max, MaxTextureSize by MaxTextureSize
             if (tex_w > g_MaxTextureSize ||
                 tex_h > g_MaxTextureSize)
             {
@@ -762,6 +843,120 @@ namespace sphere {
         }
 
         //-----------------------------------------------------------------
+        bool CaptureFrame(const Recti& rect)
+        {
+            Recti frame_rect(0, 0, g_WindowSize.width, g_WindowSize.height);
+            if (!rect.isValid() || !frame_rect.contains(rect)) {
+                return false;
+            }
+
+            int x = rect.getX();
+            int y = g_WindowSize.height - (rect.getY() + rect.getHeight());
+            int w = rect.getWidth();
+            int h = rect.getHeight();
+
+            // if not yet created, create the capture texture
+            if (g_Capture == 0) {
+                // create texture name
+                glGenTextures(1, &g_Capture);
+
+                // bind texture
+                glBindTexture(GL_TEXTURE_2D, g_Capture);
+
+                // set up wrap parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+                // set up filter parameters
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            }
+
+            // ensure the capture texture is big enough
+            if (w > g_CaptureWidth || h > g_CaptureHeight) {
+                int tex_w = w;
+                int tex_h = h;
+
+                // if NPOT textures are not supported, calculate a good texture size
+                if (!g_NPOTTexturesSupported) {
+                    double log2_w = log10((double)tex_w) / log10(2.0);
+                    double log2_h = log10((double)tex_h) / log10(2.0);
+
+                    if (log2_w != floor(log2_w)) {
+                        tex_w = 1 << (int)ceil(log2_w);
+                    }
+
+                    if (log2_h != floor(log2_h)) {
+                        tex_h = 1 << (int)ceil(log2_h);
+                    }
+                }
+
+                // make sure texture is, at max, MaxTextureSize by MaxTextureSize
+                if (tex_w > g_MaxTextureSize ||
+                    tex_h > g_MaxTextureSize)
+                {
+                    return false;
+                }
+
+                // bind texture
+                glBindTexture(GL_TEXTURE_2D, g_Capture);
+
+                // allocate new texture buffer
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+                g_CaptureWidth  = tex_w;
+                g_CaptureHeight = tex_h;
+            }
+
+            // bind the capture texture
+            glBindTexture(GL_TEXTURE_2D, g_Capture);
+
+            // copy pixels from frame buffer into the capture texture
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, x, y, w, h);
+
+            return true;
+        }
+
+        //-----------------------------------------------------------------
+        void DrawCaptureQuad(const Recti& rect, Vec2i pos[4], const RGBA& mask)
+        {
+            if (g_Capture == 0 || g_CaptureWidth == 0 || g_CaptureHeight == 0) {
+                return;
+            }
+
+            Recti capture_rect(0, 0, g_CaptureWidth-1, g_CaptureHeight-1);
+            if (!rect.isValid() || !capture_rect.contains(rect)) {
+                return;
+            }
+
+            GLfloat  x = (GLfloat)rect.getX()      / (GLfloat)g_CaptureWidth;
+            GLfloat  y = (GLfloat)rect.getY()      / (GLfloat)g_CaptureHeight;
+            GLfloat  w = (GLfloat)rect.getWidth()  / (GLfloat)g_CaptureWidth;
+            GLfloat  h = (GLfloat)rect.getHeight() / (GLfloat)g_CaptureHeight;
+
+            glBindTexture(GL_TEXTURE_2D, g_Capture);
+            glEnable(GL_TEXTURE_2D);
+
+            glBegin(GL_QUADS);
+            glColor4ubv((GLubyte*)&mask);
+
+            glTexCoord2f(x, y+h);
+            glVertex2i(pos[0].x, pos[0].y);
+
+            glTexCoord2f(x+w, y+h);
+            glVertex2i(pos[1].x, pos[1].y);
+
+            glTexCoord2f(x+w, y);
+            glVertex2i(pos[2].x, pos[2].y);
+
+            glTexCoord2f(x, y);
+            glVertex2i(pos[3].x, pos[3].y);
+
+            glEnd();
+            glDisable(GL_TEXTURE_2D);
+        }
+
+        //-----------------------------------------------------------------
         void DrawPoint(const Vec2i& pos, const RGBA& color)
         {
             glBegin(GL_POINTS);
@@ -859,21 +1054,20 @@ namespace sphere {
         }
 
         //-----------------------------------------------------------------
-        void DrawSubImage(ITexture* image, const Recti& src_rect, const Vec2i& pos, const RGBA& mask)
+        void DrawSubImage(ITexture* image, const Recti& rect, const Vec2i& pos, const RGBA& mask)
         {
             assert(image);
 
-            if (!src_rect.isValid() ||
-                !Recti(0, 0, image->getSize().width-1, image->getSize().height-1).contains(src_rect))
-            {
+            Recti image_rect(0, 0, image->getSize().width-1, image->getSize().height-1);
+            if (!rect.isValid() || !image_rect.contains(rect)) {
                 return;
             }
 
             Texture* t = (Texture*)image;
-            GLfloat  x = (GLfloat)src_rect.getX()      / (GLfloat)t->textureSize.width;
-            GLfloat  y = (GLfloat)src_rect.getY()      / (GLfloat)t->textureSize.height;
-            GLfloat  w = (GLfloat)src_rect.getWidth()  / (GLfloat)t->textureSize.width;
-            GLfloat  h = (GLfloat)src_rect.getHeight() / (GLfloat)t->textureSize.height;
+            GLfloat  x = (GLfloat)rect.getX()      / (GLfloat)t->textureSize.width;
+            GLfloat  y = (GLfloat)rect.getY()      / (GLfloat)t->textureSize.height;
+            GLfloat  w = (GLfloat)rect.getWidth()  / (GLfloat)t->textureSize.width;
+            GLfloat  h = (GLfloat)rect.getHeight() / (GLfloat)t->textureSize.height;
 
             glBindTexture(GL_TEXTURE_2D, t->textureName);
             glEnable(GL_TEXTURE_2D);
@@ -885,13 +1079,13 @@ namespace sphere {
             glVertex2i(pos.x, pos.y);
 
             glTexCoord2f(x + w, y);
-            glVertex2i(pos.x + src_rect.getWidth(), pos.y);
+            glVertex2i(pos.x + rect.getWidth(), pos.y);
 
             glTexCoord2f(x + w, y + h);
-            glVertex2i(pos.x + src_rect.getWidth(), pos.y + src_rect.getHeight());
+            glVertex2i(pos.x + rect.getWidth(), pos.y + rect.getHeight());
 
             glTexCoord2f(x, y + h);
-            glVertex2i(pos.x, pos.y + src_rect.getHeight());
+            glVertex2i(pos.x, pos.y + rect.getHeight());
 
             glEnd();
             glDisable(GL_TEXTURE_2D);
@@ -929,21 +1123,20 @@ namespace sphere {
         }
 
         //-----------------------------------------------------------------
-        void DrawSubImageQuad(ITexture* texture, const Recti& src_rect, Vec2i pos[4], const RGBA& mask)
+        void DrawSubImageQuad(ITexture* image, const Recti& rect, Vec2i pos[4], const RGBA& mask)
         {
             assert(texture);
 
-            if (!src_rect.isValid() ||
-                !Recti(0, 0, texture->getSize().width-1, texture->getSize().height-1).contains(src_rect))
-            {
+            Recti image_rect(0, 0, image->getSize().width-1, image->getSize().height-1);
+            if (!rect.isValid() || !image_rect.contains(rect)) {
                 return;
             }
 
-            Texture* t = (Texture*)texture;
-            GLfloat  x = (GLfloat)src_rect.getX()      / (GLfloat)t->textureSize.width;
-            GLfloat  y = (GLfloat)src_rect.getY()      / (GLfloat)t->textureSize.height;
-            GLfloat  w = (GLfloat)src_rect.getWidth()  / (GLfloat)t->textureSize.width;
-            GLfloat  h = (GLfloat)src_rect.getHeight() / (GLfloat)t->textureSize.height;
+            Texture* t = (Texture*)image;
+            GLfloat  x = (GLfloat)rect.getX()      / (GLfloat)t->textureSize.width;
+            GLfloat  y = (GLfloat)rect.getY()      / (GLfloat)t->textureSize.height;
+            GLfloat  w = (GLfloat)rect.getWidth()  / (GLfloat)t->textureSize.width;
+            GLfloat  h = (GLfloat)rect.getHeight() / (GLfloat)t->textureSize.height;
 
             glBindTexture(GL_TEXTURE_2D, t->textureName);
             glEnable(GL_TEXTURE_2D);
@@ -1216,7 +1409,7 @@ namespace sphere {
                             }
                         }
                         if (should_add_mode) {
-                            log.info() << "Supported display mode: " \
+                            log.info() << "Supported display mode: 32 Bpp, " \
                                        << dm.dmPelsWidth \
                                        << " x " \
                                        << dm.dmPelsHeight;
@@ -1284,11 +1477,11 @@ namespace sphere {
 
                 // create window
                 RECT rect = {0, 0, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT};
-                AdjustWindowRectEx(&rect, WINDOW_STYLE, FALSE, 0);
+                AdjustWindowRectEx(&rect, BASIC_WINDOW_STYLE, FALSE, 0);
                 g_Window = CreateWindow(
                     "SphereWindowClass",
                     oss.str().c_str(), // default window title
-                    WINDOW_STYLE & ~WS_VISIBLE,
+                    BASIC_WINDOW_STYLE & ~WS_VISIBLE,
                     (GetSystemMetrics(SM_CXSCREEN) - DEFAULT_WINDOW_WIDTH)  / 2,
                     (GetSystemMetrics(SM_CYSCREEN) - DEFAULT_WINDOW_HEIGHT) / 2,
                     rect.right  - rect.left,
@@ -1305,7 +1498,6 @@ namespace sphere {
                 g_WindowSize         = Dim2i(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
                 g_WindowIsFullScreen = false;
                 g_WindowTitle        = oss.str();
-
 
                 // get window's device context
                 g_DeviceContext = GetDC(g_Window);
@@ -1358,17 +1550,22 @@ namespace sphere {
                 // get GL version
                 log.info() << "GL Version: " << glGetString(GL_VERSION);
 
-                // get non-power-of-two textures support
-                g_NonPowerOfTwoTexturesSupported = false;
-                if (*glGetString(GL_VERSION) >= '2') { // non-power-of-two texture support is a core feature since OpenGL 2.0
-                    g_NonPowerOfTwoTexturesSupported = true;
-                } else { // see if the implementation exports the GL_ARB_texture_non_power_of_two extension
-                    std::string extensions = (const char*)glGetString(GL_EXTENSIONS);
-                    if (extensions.find("GL_ARB_texture_non_power_of_two") != std::string::npos) {
-                        g_NonPowerOfTwoTexturesSupported = true;
-                    }
+                // get NPOT textures support
+                g_NPOTTexturesSupported = false;
+                if (strstr((const char*)glGetString(GL_EXTENSIONS), "GL_ARB_texture_non_power_of_two")) {
+                    g_NPOTTexturesSupported = true;
+                    log.info() << "NPOT textures supported";
+                } else {
+                    log.info() << "NPOT textures not supported";
                 }
-                log.info() << "Non-power-of-two textures supported: " << (g_NonPowerOfTwoTexturesSupported ? "Yes" : "No");
+
+                // get subtractive blending support
+                if (strstr((const char*)glGetString(GL_EXTENSIONS), "GL_EXT_blend_subtract")) {
+                    *((void**)&glBlendEquationEXT) = wglGetProcAddress("glBlendEquationEXT");
+                    log.info() << "Subtractive blending supported";
+                } else {
+                    log.info() << "Subtractive blending not supported";
+                }
 
                 // get maximum texture size
                 g_MaxTextureSize = 0;
@@ -1398,6 +1595,7 @@ namespace sphere {
                 // set up blending
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                g_BlendMode = BM_ALPHA;
 
                 // disable depth testing
                 glDisable(GL_DEPTH_TEST);
@@ -1444,6 +1642,14 @@ namespace sphere {
                     }
 
                     if (g_DeviceContext) {
+                        // delete capture
+                        if (g_Capture > 0) {
+                            glDeleteTextures(1, &g_Capture);
+                            g_Capture = 0;
+                            g_CaptureWidth = 0;
+                            g_CaptureHeight = 0;
+                        }
+
                         // reset GL context
                         wglMakeCurrent(g_DeviceContext, 0);
 

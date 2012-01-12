@@ -77,12 +77,24 @@ namespace sphere {
         bool SetFrameScissor(const Recti& scissor);
         Canvas* CloneFrame(Recti* section = 0);
 
-        // texture
+        enum {
+            BM_REPLACE = 0,
+            BM_ALPHA,
+            BM_ADD,
+            BM_SUBTRACT,
+            BM_MULTIPLY,
+        };
+
+        int  GetBlendMode();
+        bool SetBlendMode(int blendMode);
+
+        bool CaptureFrame(const Recti& rect);
+        void DrawCaptureQuad(const Recti& rect, Vec2i pos[4], const RGBA& mask = RGBA(255, 255, 255));
+
         ITexture* CreateTexture(int width, int height, const RGBA* pixels = 0);
         bool UpdateTexturePixels(ITexture* texture, Canvas* newPixels, Recti* section = 0);
         Canvas* GrabTexturePixels(ITexture* texture);
 
-        // drawing
         void DrawPoint(const Vec2i& pos, const RGBA& col);
         void DrawLine(Vec2i pos[2], RGBA col[2]);
         void DrawTriangle(Vec2i pos[3], RGBA col[3]);

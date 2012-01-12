@@ -28,11 +28,13 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "Canvas", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_CANVAS) {
-                sq_poptop(v);
+                sq_poptop(v); // pop whatever we got
                 return false;
             }
 
@@ -71,11 +73,13 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "Texture", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_TEXTURE) {
-                sq_poptop(v);
+                sq_poptop(v); // pop whatever we got
                 return false;
             }
 
@@ -339,6 +343,29 @@ namespace sphere {
             }
 
             //-----------------------------------------------------------------
+            // Canvas.setAlpha(alpha)
+            static SQInteger _canvas_setAlpha(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(1)
+                GET_ARG_INT(1, alpha)
+                This->setAlpha(alpha);
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.replaceColor(color, newColor)
+            static SQInteger _canvas_replaceColor(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(2)
+                GET_ARG_INT(1, color)
+                GET_ARG_INT(2, newColor)
+                This->replaceColor(RGBA::Unpack((u32)color), RGBA::Unpack((u32)newColor));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
             // Canvas.fill(color)
             static SQInteger _canvas_fill(HSQUIRRELVM v)
             {
@@ -364,6 +391,177 @@ namespace sphere {
             {
                 SETUP_CANVAS_OBJECT()
                 This->flipVertically();
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.rotateCW()
+            static SQInteger _canvas_rotateCW(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                This->rotateCW();
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.rotateCCW()
+            static SQInteger _canvas_rotateCCW(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                This->rotateCCW();
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.getScissor()
+            static SQInteger _canvas_getScissor(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                RET_RECT(This->getScissor())
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.setScissor(scissor)
+            static SQInteger _canvas_setScissor(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(1)
+                GET_ARG_RECT(1, scissor)
+                if (!This->setScissor(*scissor)) {
+                    THROW_ERROR("Could not set scissor")
+                }
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.getBlendMode()
+            static SQInteger _canvas_getBlendMode(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                RET_INT(This->getBlendMode())
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.setBlendMode(blendMode)
+            static SQInteger _canvas_setBlendMode(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(1)
+                GET_ARG_INT(1, blendMode)
+                switch (blendMode) {
+                    case Canvas::BM_REPLACE:
+                    case Canvas::BM_ALPHA:
+                    case Canvas::BM_ADD:
+                    case Canvas::BM_SUBTRACT:
+                    case Canvas::BM_MULTIPLY:
+                        break;
+                    default:
+                        THROW_ERROR("Invalid blend mode")
+                }
+                if (!This->setBlendMode(blendMode)) {
+                    THROW_ERROR("Could not set blend mode")
+                }
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.drawLine(x1, y1, x2, y2, col1 [, col2])
+            static SQInteger _canvas_drawLine(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_MIN_NARGS(5)
+                GET_ARG_INT(1, x1);
+                GET_ARG_INT(2, y1);
+                GET_ARG_INT(3, x2);
+                GET_ARG_INT(4, y2);
+                GET_ARG_INT(5, col1)
+                GET_OPTARG_INT(6, col2, col1)
+                Vec2i positions[2] = {
+                    Vec2i(x1, y1),
+                    Vec2i(x2, y2),
+                };
+                RGBA colors[2] = {
+                    RGBA::Unpack((u32)col1),
+                    RGBA::Unpack((u32)col2),
+                };
+                This->drawLine(positions, colors);
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.drawRect(x, y, width, height, col1 [, col2, col3, col4])
+            static SQInteger _canvas_drawRect(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_MIN_NARGS(5)
+                GET_ARG_INT(1, x)
+                GET_ARG_INT(2, y)
+                GET_ARG_INT(3, width)
+                GET_ARG_INT(4, height)
+                GET_ARG_INT(5, col1)
+                GET_OPTARG_INT(6, col2, col1)
+                GET_OPTARG_INT(7, col3, col1)
+                GET_OPTARG_INT(8, col4, col1)
+                RGBA colors[4] = {
+                    RGBA::Unpack((u32)col1),
+                    RGBA::Unpack((u32)col2),
+                    RGBA::Unpack((u32)col3),
+                    RGBA::Unpack((u32)col4),
+                };
+                This->drawRect(Recti(x, y, x + width -1, y + height - 1), colors);
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.drawCircle(x, y, radius, fill, col1 [, col2])
+            static SQInteger _canvas_drawCircle(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_MIN_NARGS(5)
+                GET_ARG_INT(1, x)
+                GET_ARG_INT(2, y)
+                GET_ARG_INT(3, radius)
+                GET_ARG_BOOL(4, fill)
+                GET_ARG_INT(5, col1)
+                GET_OPTARG_INT(6, col2, col1)
+                if (radius < 0) {
+                    THROW_ERROR1("Invalid radius: %d", radius)
+                }
+                RGBA colors[2] = {
+                    RGBA::Unpack((u32)col1),
+                    RGBA::Unpack((u32)col2),
+                };
+                This->drawCircle(x, y, radius, (fill == SQTrue ? true : false), colors);
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.drawImage(image, x, y)
+            static SQInteger _canvas_drawImage(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(3)
+                GET_ARG_CANVAS(1, image)
+                GET_ARG_INT(2, x)
+                GET_ARG_INT(3, y)
+                This->drawImage(image, Vec2i(x, y));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // Canvas.drawSubImage(image, ox, oy, width, height, x, y)
+            static SQInteger _canvas_drawSubImage(HSQUIRRELVM v)
+            {
+                SETUP_CANVAS_OBJECT()
+                CHECK_NARGS(7)
+                GET_ARG_CANVAS(1, image)
+                GET_ARG_INT(2, ox)
+                GET_ARG_INT(3, oy)
+                GET_ARG_INT(4, width)
+                GET_ARG_INT(5, height)
+                GET_ARG_INT(6, x)
+                GET_ARG_INT(7, y)
+                This->drawSubImage(image, Recti(ox, oy, ox + width - 1, oy + height - 1), Vec2i(x, y));
                 RET_VOID()
             }
 
@@ -549,9 +747,22 @@ namespace sphere {
                 {"getPixelByIndex",     "Canvas.getPixelByIndex",   _canvas_getPixelByIndex   },
                 {"setPixelByIndex",     "Canvas.setPixelByIndex",   _canvas_setPixelByIndex   },
                 {"resize",              "Canvas.resize",            _canvas_resize            },
+                {"setAlpha",            "Canvas.setAlpha",          _canvas_setAlpha          },
+                {"replaceColor",        "Canvas.replaceColor",      _canvas_replaceColor      },
                 {"fill",                "Canvas.fill",              _canvas_fill              },
                 {"flipHorizontally",    "Canvas.flipHorizontally",  _canvas_flipHorizontally  },
                 {"flipVertically",      "Canvas.flipVertically",    _canvas_flipVertically    },
+                {"rotateCW",            "Canvas.rotateCW",          _canvas_rotateCW          },
+                {"rotateCCW",           "Canvas.rotateCCW",         _canvas_rotateCCW         },
+                {"getScissor",          "getScissor",               _canvas_getScissor        },
+                {"setScissor",          "setScissor",               _canvas_setScissor        },
+                {"getBlendMode",        "getBlendMode",             _canvas_getBlendMode      },
+                {"setBlendMode",        "setBlendMode",             _canvas_setBlendMode      },
+                {"drawLine",            "Canvas.drawLine",          _canvas_drawLine          },
+                {"drawRect",            "Canvas.drawRect",          _canvas_drawRect          },
+                {"drawCircle",          "Canvas.drawCircle",        _canvas_drawCircle        },
+                {"drawImage",           "Canvas.drawImage",         _canvas_drawImage         },
+                {"drawSubImage",        "Canvas.drawSubImage",      _canvas_drawSubImage      },
                 {"_get",                "Canvas._get",              _canvas__get              },
                 {"_set",                "Canvas._set",              _canvas__set              },
                 {"_typeof",             "Canvas._typeof",           _canvas__typeof           },
@@ -916,8 +1127,8 @@ namespace sphere {
             }
 
             //-----------------------------------------------------------------
-            // GetDisplayModes()
-            static SQInteger _graphics_GetDisplayModes(HSQUIRRELVM v)
+            // EnumerateDisplayModes()
+            static SQInteger _graphics_EnumerateDisplayModes(HSQUIRRELVM v)
             {
                 const std::vector<Dim2i>& modes = video::GetDisplayModes();
 
@@ -1130,6 +1341,100 @@ namespace sphere {
             }
 
             //-----------------------------------------------------------------
+            // GetBlendMode()
+            static SQInteger _graphics_GetBlendMode(HSQUIRRELVM v)
+            {
+                RET_INT(video::GetBlendMode())
+            }
+
+            //-----------------------------------------------------------------
+            // SetBlendMode(blendMode)
+            static SQInteger _graphics_SetBlendMode(HSQUIRRELVM v)
+            {
+                CHECK_NARGS(1)
+                GET_ARG_INT(1, blendMode)
+                switch (blendMode) {
+                    case video::BM_REPLACE:
+                    case video::BM_ALPHA:
+                    case video::BM_ADD:
+                    case video::BM_SUBTRACT:
+                    case video::BM_MULTIPLY:
+                        break;
+                    default:
+                        THROW_ERROR("Invalid blend mode")
+                }
+                if (!video::SetBlendMode(blendMode)) {
+                    THROW_ERROR("Could not set blend mode")
+                }
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // CaptureFrame(ox, oy, width, height)
+            static SQInteger _graphics_CaptureFrame(HSQUIRRELVM v)
+            {
+                CHECK_NARGS(4)
+                GET_ARG_INT(1, ox)
+                GET_ARG_INT(2, oy)
+                GET_ARG_INT(3, width)
+                GET_ARG_INT(4, height)
+                if (!video::CaptureFrame(Recti(ox, oy, ox + width - 1, oy + height - 1))) {
+                    THROW_ERROR("Could not capture frame")
+                }
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawCapture(ox, oy, width, height, x, y [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawCapture(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(6)
+                GET_ARG_INT(1, ox)
+                GET_ARG_INT(2, oy)
+                GET_ARG_INT(3, width)
+                GET_ARG_INT(4, height)
+                GET_ARG_INT(5, x)
+                GET_ARG_INT(6, y)
+                GET_OPTARG_INT(7, mask, RGBA::Pack(255, 255, 255))
+                Vec2i positions[4] = {
+                    Vec2i(x,         y         ),
+                    Vec2i(x + width, y         ),
+                    Vec2i(x + width, y + height),
+                    Vec2i(x,         y + height),
+                };
+                video::DrawCaptureQuad(Recti(ox, oy, ox + width - 1, oy + height - 1), positions, RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawCaptureQuad(ox, oy, width, height, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawCaptureQuad(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(12)
+                GET_ARG_INT(1, ox)
+                GET_ARG_INT(2, oy)
+                GET_ARG_INT(3, width)
+                GET_ARG_INT(4, height)
+                GET_ARG_INT(5, x1)
+                GET_ARG_INT(6, y1)
+                GET_ARG_INT(7, x2)
+                GET_ARG_INT(8, y2)
+                GET_ARG_INT(9, x3)
+                GET_ARG_INT(10, y3)
+                GET_ARG_INT(11, x4)
+                GET_ARG_INT(12, y4)
+                GET_OPTARG_INT(13, mask, RGBA::Pack(255, 255, 255))
+                Vec2i positions[4] = {
+                    Vec2i(x1, y1),
+                    Vec2i(x2, y2),
+                    Vec2i(x3, y3),
+                    Vec2i(x4, y4),
+                };
+                video::DrawCaptureQuad(Recti(ox, oy, ox + width - 1, oy + height - 1), positions, RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
             // DrawPoint(x, y, color)
             static SQInteger _graphics_DrawPoint(HSQUIRRELVM v)
             {
@@ -1193,7 +1498,114 @@ namespace sphere {
             }
 
             //-----------------------------------------------------------------
-            // DrawTexturedTriangle(tex, tx1, ty1, tx2, ty2, tx3, ty3, x1, y1, x2, y2, x3, y3 [, mask = CreateColor(255, 255, 255)])
+            // DrawRect(x, y, width, height, col1 [, col2, col3, col4])
+            static SQInteger _graphics_DrawRect(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(5)
+                GET_ARG_INT(1, x)
+                GET_ARG_INT(2, y)
+                GET_ARG_INT(3, width)
+                GET_ARG_INT(4, height)
+                GET_ARG_INT(5, col1)
+                GET_OPTARG_INT(6, col2, col1)
+                GET_OPTARG_INT(7, col3, col1)
+                GET_OPTARG_INT(8, col4, col1)
+                RGBA colors[4] = {
+                    RGBA::Unpack((u32)col1),
+                    RGBA::Unpack((u32)col2),
+                    RGBA::Unpack((u32)col3),
+                    RGBA::Unpack((u32)col4),
+                };
+                video::DrawRect(Recti(x, y, x + width - 1, y + height - 1), colors);
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawImage(image, x, y [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawImage(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(3)
+                GET_ARG_TEXTURE(1, image)
+                GET_ARG_INT(2, x)
+                GET_ARG_INT(3, y)
+                GET_OPTARG_INT(4, mask, RGBA::Pack(255, 255, 255))
+                video::DrawImage(image, Vec2i(x, y), RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawSubImage(image, ox, oy, width, height, x, y [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawSubImage(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(7)
+                GET_ARG_TEXTURE(1, image)
+                GET_ARG_INT(2, ox)
+                GET_ARG_INT(3, oy)
+                GET_ARG_INT(4, width)
+                GET_ARG_INT(5, height)
+                GET_ARG_INT(6, x)
+                GET_ARG_INT(7, y)
+                GET_OPTARG_INT(8, mask, RGBA::Pack(255, 255, 255))
+                video::DrawSubImage(image, Recti(ox, oy, ox + width - 1, oy + height - 1), Vec2i(x, y), RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawImageQuad(image, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawImageQuad(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(9)
+                GET_ARG_TEXTURE(1, image)
+                GET_ARG_INT(2, x1)
+                GET_ARG_INT(3, y1)
+                GET_ARG_INT(4, x2)
+                GET_ARG_INT(5, y2)
+                GET_ARG_INT(6, x3)
+                GET_ARG_INT(7, y3)
+                GET_ARG_INT(8, x4)
+                GET_ARG_INT(9, y4)
+                GET_OPTARG_INT(10, mask, RGBA::Pack(255, 255, 255))
+                Vec2i positions[4] = {
+                    Vec2i(x1, y1),
+                    Vec2i(x2, y2),
+                    Vec2i(x3, y3),
+                    Vec2i(x4, y4),
+                };
+                video::DrawImageQuad(image, positions, RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawSubImageQuad(image, ox, oy, width, height, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
+            static SQInteger _graphics_DrawSubImageQuad(HSQUIRRELVM v)
+            {
+                CHECK_MIN_NARGS(13)
+                GET_ARG_TEXTURE(1, image)
+                GET_ARG_INT(2, ox)
+                GET_ARG_INT(3, oy)
+                GET_ARG_INT(4, width)
+                GET_ARG_INT(5, height)
+                GET_ARG_INT(6, x1)
+                GET_ARG_INT(7, y1)
+                GET_ARG_INT(8, x2)
+                GET_ARG_INT(9, y2)
+                GET_ARG_INT(10, x3)
+                GET_ARG_INT(11, y3)
+                GET_ARG_INT(12, x4)
+                GET_ARG_INT(13, y4)
+                GET_OPTARG_INT(14, mask, RGBA::Pack(255, 255, 255))
+                Vec2i positions[4] = {
+                    Vec2i(x1, y1),
+                    Vec2i(x2, y2),
+                    Vec2i(x3, y3),
+                    Vec2i(x4, y4),
+                };
+                video::DrawSubImageQuad(image, Recti(ox, oy, ox + width - 1, oy + height - 1), positions, RGBA::Unpack((u32)mask));
+                RET_VOID()
+            }
+
+            //-----------------------------------------------------------------
+            // DrawTexturedTriangle(texture, tx1, ty1, tx2, ty2, tx3, ty3, x1, y1, x2, y2, x3, y3 [, mask = CreateColor(255, 255, 255)])
             static SQInteger _graphics_DrawTexturedTriangle(HSQUIRRELVM v)
             {
                 CHECK_MIN_NARGS(13)
@@ -1226,104 +1638,6 @@ namespace sphere {
             }
 
             //-----------------------------------------------------------------
-            // DrawRect(rect, col1 [, col2, col3, col4])
-            static SQInteger _graphics_DrawRect(HSQUIRRELVM v)
-            {
-                CHECK_MIN_NARGS(2)
-                GET_ARG_RECT(1, rect)
-                GET_ARG_INT(2, col1)
-                GET_OPTARG_INT(3, col2, col1)
-                GET_OPTARG_INT(4, col3, col1)
-                GET_OPTARG_INT(5, col4, col1)
-                RGBA colors[4] = {
-                    RGBA::Unpack((u32)col1),
-                    RGBA::Unpack((u32)col2),
-                    RGBA::Unpack((u32)col3),
-                    RGBA::Unpack((u32)col4),
-                };
-                video::DrawRect(*rect, colors);
-                RET_VOID()
-            }
-
-            //-----------------------------------------------------------------
-            // DrawImage(image, x, y [, mask = CreateColor(255, 255, 255)])
-            static SQInteger _graphics_DrawImage(HSQUIRRELVM v)
-            {
-                CHECK_MIN_NARGS(3)
-                GET_ARG_TEXTURE(1, image)
-                GET_ARG_INT(2, x)
-                GET_ARG_INT(3, y)
-                GET_OPTARG_INT(4, mask, RGBA::Pack(255, 255, 255))
-                video::DrawImage(image, Vec2i(x, y), RGBA::Unpack((u32)mask));
-                RET_VOID()
-            }
-
-            //-----------------------------------------------------------------
-            // DrawSubImage(image, src_rect, x, y [, mask = CreateColor(255, 255, 255)])
-            static SQInteger _graphics_DrawSubImage(HSQUIRRELVM v)
-            {
-                CHECK_MIN_NARGS(4)
-                GET_ARG_TEXTURE(1, image)
-                GET_ARG_RECT(2, src_rect)
-                GET_ARG_INT(3, x)
-                GET_ARG_INT(4, y)
-                GET_OPTARG_INT(5, mask, RGBA::Pack(255, 255, 255))
-                video::DrawSubImage(image, *src_rect, Vec2i(x, y), RGBA::Unpack((u32)mask));
-                RET_VOID()
-            }
-
-            //-----------------------------------------------------------------
-            // DrawImageQuad(image, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
-            static SQInteger _graphics_DrawImageQuad(HSQUIRRELVM v)
-            {
-                CHECK_MIN_NARGS(9)
-                GET_ARG_TEXTURE(1, image)
-                GET_ARG_INT(2, x1)
-                GET_ARG_INT(3, y1)
-                GET_ARG_INT(4, x2)
-                GET_ARG_INT(5, y2)
-                GET_ARG_INT(6, x3)
-                GET_ARG_INT(7, y3)
-                GET_ARG_INT(8, x4)
-                GET_ARG_INT(9, y4)
-                GET_OPTARG_INT(10, mask, RGBA::Pack(255, 255, 255))
-                Vec2i positions[4] = {
-                    Vec2i(x1, y1),
-                    Vec2i(x2, y2),
-                    Vec2i(x3, y3),
-                    Vec2i(x4, y4),
-                };
-                video::DrawImageQuad(image, positions, RGBA::Unpack((u32)mask));
-                RET_VOID()
-            }
-
-            //-----------------------------------------------------------------
-            // DrawSubImageQuad(image, src_rect, x1, y1, x2, y2, x3, y3, x4, y4 [, mask = CreateColor(255, 255, 255)])
-            static SQInteger _graphics_DrawSubImageQuad(HSQUIRRELVM v)
-            {
-                CHECK_MIN_NARGS(10)
-                GET_ARG_TEXTURE(1, image)
-                GET_ARG_RECT(2, src_rect)
-                GET_ARG_INT(3, x1)
-                GET_ARG_INT(4, y1)
-                GET_ARG_INT(5, x2)
-                GET_ARG_INT(6, y2)
-                GET_ARG_INT(7, x3)
-                GET_ARG_INT(8, y3)
-                GET_ARG_INT(9, x4)
-                GET_ARG_INT(10, y4)
-                GET_OPTARG_INT(11, mask, RGBA::Pack(255, 255, 255))
-                Vec2i positions[4] = {
-                    Vec2i(x1, y1),
-                    Vec2i(x2, y2),
-                    Vec2i(x3, y3),
-                    Vec2i(x4, y4),
-                };
-                video::DrawSubImageQuad(image, *src_rect, positions, RGBA::Unpack((u32)mask));
-                RET_VOID()
-            }
-
-            //-----------------------------------------------------------------
             static util::Function _graphics_functions[] = {
                 {"CreateColor",                 "CreateColor",              _graphics_CreateColor              },
                 {"UnpackRed",                   "UnpackRed",                _graphics_UnpackRed                },
@@ -1331,7 +1645,7 @@ namespace sphere {
                 {"UnpackBlue",                  "UnpackBlue",               _graphics_UnpackBlue               },
                 {"UnpackAlpha",                 "UnpackAlpha",              _graphics_UnpackAlpha              },
                 {"GetDefaultDisplayMode",       "GetDefaultDisplayMode",    _graphics_GetDefaultDisplayMode    },
-                {"GetDisplayModes",             "GetDisplayModes",          _graphics_GetDisplayModes          },
+                {"EnumerateDisplayModes",       "EnumerateDisplayModes",    _graphics_EnumerateDisplayModes    },
                 {"SetWindowMode",               "SetWindowMode",            _graphics_SetWindowMode            },
                 {"GetWindowWidth",              "GetWindowWidth",           _graphics_GetWindowWidth           },
                 {"GetWindowHeight",             "GetWindowHeight",          _graphics_GetWindowHeight          },
@@ -1347,15 +1661,20 @@ namespace sphere {
                 {"GetFrameScissor",             "GetFrameScissor",          _graphics_GetFrameScissor          },
                 {"SetFrameScissor",             "SetFrameScissor",          _graphics_SetFrameScissor          },
                 {"CloneFrame",                  "CloneFrame",               _graphics_CloneFrame               },
+                {"GetBlendMode",                "GetBlendMode",             _graphics_GetBlendMode             },
+                {"SetBlendMode",                "SetBlendMode",             _graphics_SetBlendMode             },
+                {"CaptureFrame",                "CaptureFrame",             _graphics_CaptureFrame             },
+                {"DrawCapture",                 "DrawCapture",              _graphics_DrawCapture              },
+                {"DrawCaptureQuad",             "DrawCaptureQuad",          _graphics_DrawCaptureQuad          },
                 {"DrawPoint",                   "DrawPoint",                _graphics_DrawPoint                },
                 {"DrawLine",                    "DrawLine",                 _graphics_DrawLine                 },
                 {"DrawTriangle",                "DrawTriangle",             _graphics_DrawTriangle             },
-                {"DrawTexturedTriangle",        "DrawTexturedTriangle",     _graphics_DrawTexturedTriangle     },
                 {"DrawRect",                    "DrawRect",                 _graphics_DrawRect                 },
                 {"DrawImage",                   "DrawImage",                _graphics_DrawImage                },
                 {"DrawSubImage",                "DrawSubImage",             _graphics_DrawSubImage             },
                 {"DrawImageQuad",               "DrawImageQuad",            _graphics_DrawImageQuad            },
                 {"DrawSubImageQuad",            "DrawSubImageQuad",         _graphics_DrawSubImageQuad         },
+                {"DrawTexturedTriangle",        "DrawTexturedTriangle",     _graphics_DrawTexturedTriangle     },
                 {0,0}
             };
 
@@ -1378,6 +1697,13 @@ namespace sphere {
                 {"WE_MOUSE_MOTION",             video::WindowEvent::MOUSE_MOTION           },
                 {"WE_MOUSE_WHEEL_MOTION",       video::WindowEvent::MOUSE_WHEEL_MOTION     },
                 {"WE_WINDOW_CLOSE",             video::WindowEvent::WINDOW_CLOSE           },
+
+                // blend mode constants
+                {"BM_REPLACE",      video::BM_REPLACE   },
+                {"BM_ALPHA",        video::BM_ALPHA     },
+                {"BM_ADD",          video::BM_ADD       },
+                {"BM_SUBTRACT",     video::BM_SUBTRACT  },
+                {"BM_MULTIPLY",     video::BM_MULTIPLY  },
 
                 {0}
             };

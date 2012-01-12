@@ -23,8 +23,10 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "Rect", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_RECT) {
                 sq_poptop(v);
@@ -63,8 +65,10 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "Vec2", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_VEC2) {
                 sq_poptop(v);
@@ -105,8 +109,10 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "Blob", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_BLOB) {
                 sq_poptop(v);

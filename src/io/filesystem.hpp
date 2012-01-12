@@ -11,7 +11,6 @@ namespace sphere {
     namespace io {
         namespace filesystem {
 
-            bool   ComplementPath(std::string& path);
             IFile* OpenFile(const std::string& filename, int mode = IFile::FM_IN);
             bool   FileExists(const std::string& filename);
             bool   IsFile(const std::string& filename);

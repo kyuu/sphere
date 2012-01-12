@@ -818,15 +818,21 @@ namespace sphere {
                     THROW_ERROR1("Could not compile string: %s", g_LastError.c_str())
                 }
 
-                // execute closure
+                // evaluate closure
                 sq_pushroottable(v); // this
-                if (!SQ_SUCCEEDED(sq_call(v, 1, SQFalse, SQTrue))) {
+                if (!SQ_SUCCEEDED(sq_call(v, 1, SQTrue, SQTrue))) {
                     sq_settop(v, oldtop);
-                    THROW_ERROR1("Could not execute string: %s", g_LastError.c_str())
+                    THROW_ERROR1("Could not evaluate string: %s", g_LastError.c_str())
                 }
 
-                sq_settop(v, oldtop);
-                RET_VOID()
+                // the object is now on top of the stack
+                int numtopop = (sq_gettop(v) - oldtop) - 1;
+                while (numtopop > 0) {
+                    sq_remove(v, -2);
+                    numtopop--;
+                }
+
+                return 1;
             }
 
             //-----------------------------------------------------------------
@@ -839,15 +845,9 @@ namespace sphere {
                     THROW_ERROR("Empty script name")
                 }
 
-                // complement path
-                std::string script = name;
-                if (!io::filesystem::ComplementPath(script)) {
-                    THROW_ERROR("Invalid path")
-                }
-
                 // evaluate script
-                if (!EvaluateScript(script)) {
-                    THROW_ERROR1("Could not evaluate script '%s'", script.c_str())
+                if (!EvaluateScript(name)) {
+                    THROW_ERROR2("Could not evaluate script '%s': %s", name, g_LastError.c_str())
                 }
                 RET_VOID()
             }
@@ -862,11 +862,7 @@ namespace sphere {
                     THROW_ERROR("Empty script name")
                 }
 
-                // complement path
                 std::string script = name;
-                if (!io::filesystem::ComplementPath(script)) {
-                    THROW_ERROR1("Invalid path '%s'", script.c_str())
-                }
 
                 // see if the script has already been loaded
                 for (int i = 0; i < (int)g_LoadedScripts.size(); ++i) {
@@ -879,7 +875,7 @@ namespace sphere {
                 if (!EvaluateScript(script + BYTECODE_FILE_EXT) && // prefer bytecode
                     !EvaluateScript(script +   SCRIPT_FILE_EXT))
                 {
-                    THROW_ERROR1("Could not evaluate script '%s'", script.c_str())
+                    THROW_ERROR2("Could not evaluate script '%s': %s", script.c_str(), g_LastError.c_str())
                 }
 
                 // register script
@@ -1068,6 +1064,11 @@ namespace sphere {
                 sq_newclosure(g_VM, runtime_error_handler, 0);
                 sq_seterrorhandler(g_VM);
                 sq_setprintfunc(g_VM, print_func, print_func);
+
+                // register script functions
+                sq_pushroottable(g_VM);
+                util::RegisterFunctions(g_VM, _script_functions);
+                sq_poptop(g_VM); // pop root table
 
                 // register libs
                 internal::RegisterSystemLibrary(g_VM);

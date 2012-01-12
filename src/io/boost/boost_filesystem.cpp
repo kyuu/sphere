@@ -14,49 +14,39 @@ static fs::path g_CommonPath;
 static fs::path g_DataPath;
 
 //-----------------------------------------------------------------
-static bool process_path(const std::string& raw, std::string& rel, std::string& abs)
+static bool process_path(const std::string& raw, std::string& abs)
 {
-    // see if path contains forbidden characters
-    if ((!raw.empty() && raw[0] == '\\')     || // path starts with a "\"
-        (!raw.empty() && raw[0] == '~')      || // path starts with a "~"
-        (!raw.empty() && raw[0] == '.')      || // path starts with a "."
+    // see if path is invalid
+    if (raw.empty()      || // path is empty
+        raw[0] == '\\'   || // path starts with a "\"
+        raw[0] == '~'    || // path starts with a "~"
+        raw[0] == '.'    || // path starts with a "."
         raw.find(':') != std::string::npos || // path contains ":"
         raw.find("..") != std::string::npos)  // path contains ".."
     {
         return false;
     }
 
-    if (raw.empty()) { // path is empty, so simply defaults to the data path
-        rel = "/data";
-        abs = g_DataPath.string();
-    } else if (raw[0] == '/') {
-        if (raw.find("/data") == 0) { // path begins with "/data", so is relative to the data path
-            rel = raw;
-            if (raw.size() == strlen("/data")) { // path is equal to "/data"
-                abs = g_DataPath.string();
-            } else {
-                abs = (g_DataPath / raw.substr(strlen("/data"))).string();
-            }
-        } else if (raw.find("/common") == 0) { // path begins with "/common", so is relative to the common path
-            rel = raw;
-            if (raw.size() == strlen("/common")) { // path is equal to "/common"
-                abs = g_CommonPath.string();
-            } else {
-                abs = (g_CommonPath / raw.substr(strlen("/common"))).string();
-            }
-        } else if (raw.find("/engine") == 0) { // path begins with "/engine", so is relative to the engine path
-            rel = raw;
-            if (raw.size() == strlen("/engine")) { // path is equal to "/engine"
-                abs = g_EnginePath.string();
-            } else {
-                abs = (g_EnginePath / raw.substr(strlen("/engine"))).string();
-            }
+    if (raw.find("/data") == 0) { // path begins with "/data", so is relative to the data path
+        if (raw.size() == strlen("/data")) { // path is equal to "/data"
+            abs = g_DataPath.string();
         } else {
-            return false;
+            abs = (g_DataPath / raw.substr(strlen("/data"))).string();
         }
-    } else { // path begins not with a forwardslash, so is relative to the data path
-        rel = std::string("/data/") + raw;
-        abs = (g_DataPath / raw).string();
+    } else if (raw.find("/common") == 0) { // path begins with "/common", so is relative to the common path
+        if (raw.size() == strlen("/common")) { // path is equal to "/common"
+            abs = g_CommonPath.string();
+        } else {
+            abs = (g_CommonPath / raw.substr(strlen("/common"))).string();
+        }
+    } else if (raw.find("/engine") == 0) { // path begins with "/engine", so is relative to the engine path
+        if (raw.size() == strlen("/engine")) { // path is equal to "/engine"
+            abs = g_EnginePath.string();
+        } else {
+            abs = (g_EnginePath / raw.substr(strlen("/engine"))).string();
+        }
+    } else {
+        return false;
     }
 
     return true;
@@ -67,26 +57,13 @@ namespace sphere {
         namespace filesystem {
 
             //-----------------------------------------------------------------
-            bool ComplementPath(std::string& path)
-            {
-                std::string rel;
-                std::string abs;
-                if (process_path(path, rel, abs)) {
-                    path = rel;
-                    return true;
-                }
-                return false;
-            }
-
-            //-----------------------------------------------------------------
             IFile* OpenFile(const std::string& filename, int mode)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     RefPtr<File> file = File::Create();
                     if (file->open(abs, mode)) {
-                        file->setName(rel);
+                        file->setName(filename);
                         return file.release();
                     }
                 }
@@ -96,9 +73,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool FileExists(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         return fs::exists(abs);
                     } catch (...) { }
@@ -109,9 +85,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool IsFile(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         return fs::is_regular_file(abs);
                     } catch (...) { }
@@ -122,9 +97,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool IsDirectory(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         return fs::is_directory(abs);
                     } catch (...) { }
@@ -135,9 +109,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             int GetFileSize(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         return (int)fs::file_size(abs);
                     } catch (...) { }
@@ -148,9 +121,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             int GetFileModTime(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         return (int)fs::last_write_time(abs);
                     } catch (...) { }
@@ -161,9 +133,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool CreateDirectory(const std::string& directory)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(directory, rel, abs)) {
+                if (process_path(directory, abs)) {
                     try {
                         return fs::create_directory(abs);
                     } catch (...) { }
@@ -174,9 +145,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool RemoveFile(const std::string& filename)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(filename, rel, abs)) {
+                if (process_path(filename, abs)) {
                     try {
                         fs::remove(abs);
                         return true;
@@ -188,12 +158,10 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool RenameFile(const std::string& filenameFrom, const std::string& filenameTo)
             {
-                std::string relFrom;
                 std::string absFrom;
-                std::string relTo;
                 std::string absTo;
-                if (process_path(filenameFrom, relFrom, absFrom) &&
-                    process_path(filenameTo, relTo, absTo))
+                if (process_path(filenameFrom, absFrom) &&
+                    process_path(filenameTo, absTo))
                 {
                     try {
                         fs::rename(absFrom, absTo);
@@ -206,9 +174,8 @@ namespace sphere {
             //-----------------------------------------------------------------
             bool EnumerateFiles(const std::string& directory, std::vector<std::string>& fileList)
             {
-                std::string rel;
                 std::string abs;
-                if (process_path(directory, rel, abs)) {
+                if (process_path(directory, abs)) {
                     try {
                         fileList.clear();
                         fs::directory_iterator end_iter;

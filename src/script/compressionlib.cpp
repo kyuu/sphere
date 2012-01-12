@@ -24,8 +24,10 @@ namespace sphere {
             sq_pushregistrytable(v);
             sq_pushstring(v, "ZStream", -1);
             if (!SQ_SUCCEEDED(sq_rawget(v, -2))) {
+                sq_poptop(v); // pop registry table
                 return false;
             }
+            sq_remove(v, -2); // remove registry table
             SQUserPointer tt = 0;
             if (!SQ_SUCCEEDED(sq_gettypetag(v, -1, &tt)) || tt != TT_ZSTREAM) {
                 sq_poptop(v);

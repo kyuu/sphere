@@ -82,19 +82,42 @@ namespace sphere {
                 assert(!g_AudioDevice);
 
                 // see if there are any audio devices available
-                std::vector<audiere::AudioDeviceDesc> device_list;
-                audiere::GetSupportedAudioDevices(device_list);
-                if (device_list.empty()) {
+                std::vector<audiere::AudioDeviceDesc> devices;
+                audiere::GetSupportedAudioDevices(devices);
+                if (devices.empty()) {
                     log.error() << "No available audio devices";
                     return false;
+                } else {
+                    for (size_t i = 0; i < devices.size(); i++) {
+                        log.info() << "Available audio device: " \
+                                   << devices[i].name \
+                                   << " (" \
+                                   << devices[i].description \
+                                   << ")";
+                    }
                 }
 
                 // see if audiere supports any audio file format
-                std::vector<audiere::FileFormatDesc> format_list;
-                audiere::GetSupportedFileFormats(format_list);
-                if (format_list.empty()) {
+                std::vector<audiere::FileFormatDesc> formats;
+                audiere::GetSupportedFileFormats(formats);
+                if (formats.empty()) {
                     log.error() << "No supported audio file formats";
                     return false;
+                } else {
+                    for (size_t i = 0; i < formats.size(); i++) {
+                        std::ostringstream extensions;
+                        for (size_t j = 0; j < formats[i].extensions.size(); j++) {
+                            extensions << formats[i].extensions[j];
+                            if (j != formats[i].extensions.size()-1) {
+                                extensions << ", ";
+                            }
+                        }
+                        log.info() << "Supported file format: " \
+                                   << extensions.str() \
+                                   << " (" \
+                                   << formats[i].description \
+                                   << ")";
+                    }
                 }
 
                 // open default audio device
@@ -104,6 +127,9 @@ namespace sphere {
                     return false;
                 }
                 g_AudioDevice->ref();
+
+                log.info() << "Opened default audio device: " << g_AudioDevice->getName();
+
                 return true;
             }
 

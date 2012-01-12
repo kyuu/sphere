@@ -1,12 +1,79 @@
+Version 2.0.0 Beta 3
+ - Added common scripts game.nut, kbd.nut, mouse.nut and console.nut.
+ - Added GetSphereVersion.
+ - Added GetPlatform.
+ - Added UpdateSystem.
+ - Added EvaluateString.
+ - Added Math functions and constants.
+ - Paths referring to files/directories in the data path must now be prefixed with "/data/".
+ - Renamed DoesFileExist to FileExists.
+ - Renamed IsRegularFile to IsFile.
+ - Renamed GetFileList to EnumerateFiles.
+ - Added GetFileSize.
+ - Removed OpenWindow.
+ - Removed SetWindowFullscreen.
+ - Renamed GetSupportedVideoModes to EnumerateDisplayModes.
+ - Renamed IsWindowFullscreen to IsWindowFullScreen.
+ - Renamed ShowFrame to SwapWindowBuffers.
+ - Expanded Rect argument in DrawRect, DrawSubImage and DrawSubImageQuad.
+ - Added SetWindowMode.
+ - Added IsWindowActive.
+ - Added PeekWindowEvent.
+ - Added GetWindowEvent.
+ - Added ClearWindowEvents.
+ - Added window event constants.
+ - Added GetDefaultDisplayMode.
+ - Added CaptureFrame.
+ - Added DrawCapture.
+ - Added DrawCaptureQuad.
+ - Added GetBlendMode.
+ - Added SetBlendMode.
+ - Added blend mode constants.
+ - Renamed Sound.Load to Sound.FromFile.
+ - Renamed SoundEffect.LoadFromStream to SoundEffect.FromStream.
+ - Removed UpdateInput.
+ - Removed AreEventsPending.
+ - Removed GetEvent.
+ - Removed ClearEvents.
+ - Removed event constants.
+ - Refactored key constants.
+ - Renamed Blob.toString to Blob.createString.
+ - Changed Canvas constructor's signature.
+ - Renamed Canvas.Load to Canvas.FromFile.
+ - Renamed Canvas.LoadFromStream to Canvas.FromStream.
+ - Renamed Canvas.save to Canvas.saveToFile.
+ - Added Canvas.FromBuffer.
+ - Added Canvas.setAlpha.
+ - Added Canvas.replaceColor.
+ - Added Canvas.grey.
+ - Added Canvas.rotateCW.
+ - Added Canvas.rotateCCW.
+ - Added Canvas.getScissor.
+ - Added Canvas.setScissor.
+ - Added Canvas.getBlendMode.
+ - Added Canvas.setBlendMode.
+ - Added Canvas.drawLine.
+ - Added Canvas.drawRect.
+ - Added Canvas.drawCircle.
+ - Added Canvas.drawImage.
+ - Added Canvas.drawSubImage.
+ - Changed Texture constructor's signature.
+ - Renamed Texture.Load to Texture.FromFile.
+ - Renamed Texture.LoadFromStream to Texture.FromStream.
+ - Added Texture.FromCanvas.
+
 Version 2.0.0 Beta 2
- - Make API functions simpler and shorter.
- - Add engine configuration file.
- - Fix multiple issues in graphics functions.
- - Add functions Texture.Load and Texture.LoadFromStream.
- - Add functions Canvas.flipHorizontally and Canvas.flipVertically.
- - Add function GetTimeInfo.
- - Rename ObjectToJSON to JSONStringify and add JSONParse.
- - Fix memory leak in Stream.read and Blob.FromString.
- - Add function Assert.
- - Add common scripts windowstyle, spriteset and font.
- - Add version and integer limits constants.
+ - Made API functions simpler and shorter.
+ - Added engine configuration file.
+ - Fixed multiple issues in graphics functions.
+ - Added Texture.Load.
+ - Added Texture.LoadFromStream.
+ - Added Canvas.flipHorizontally.
+ - Added Canvas.flipVertically.
+ - Added GetTimeInfo.
+ - Renamed ObjectToJSON to JSONStringify.
+ - Added JSONParse.
+ - Fixed memory leak in Stream.read and Blob.FromString.
+ - Added Assert.
+ - Added common scripts windowstyle.nut, spriteset.nut and font.nut.
+ - Added version and integer limits constants.

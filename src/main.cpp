@@ -94,15 +94,15 @@ int main(int argc, char* argv[])
     log.info() << "Running game";
 
     // load main script
-    if (sphere::io::filesystem::FileExists(config.MainScript + SCRIPT_FILE_EXT)) {
-        std::string filename = config.MainScript + SCRIPT_FILE_EXT;
+    if (sphere::io::filesystem::FileExists("/data/" + config.MainScript + SCRIPT_FILE_EXT)) {
+        std::string filename = "/data/" + config.MainScript + SCRIPT_FILE_EXT;
         sphere::FilePtr file = sphere::io::filesystem::OpenFile(filename);
         if (!sphere::script::CompileStream(file.get(), file->getName())) {
             log.error() << "Could not compile '" << filename << "': " << sphere::script::GetLastError();
             return 0;
         }
-    } else if (sphere::io::filesystem::FileExists(config.MainScript + BYTECODE_FILE_EXT)) {
-        std::string filename = config.MainScript + BYTECODE_FILE_EXT;
+    } else if (sphere::io::filesystem::FileExists("/data/" + config.MainScript + BYTECODE_FILE_EXT)) {
+        std::string filename = "/data/" + config.MainScript + BYTECODE_FILE_EXT;
         sphere::FilePtr file = sphere::io::filesystem::OpenFile(filename);
         if (!sphere::script::LoadObject(file.get()) || sq_gettype(sphere::script::GetVM(), -1) != OT_CLOSURE) {
             log.error() << "Could not load bytecode from '" << filename << "': " << sphere::script::GetLastError();
