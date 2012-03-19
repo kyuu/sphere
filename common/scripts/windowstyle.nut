@@ -1,4 +1,3 @@
-// ---------------------------------------------------
 class WindowStyle {
 
     constructor(background_mode, corner_colors, edge_offsets, images_) {
@@ -14,10 +13,7 @@ class WindowStyle {
     images         = null; // upper-left, top, upper-right, right, lower-right, bottom, lower-left, left, background
 }
 
-// ---------------------------------------------------
-function WindowStyle::Load(filename) {
-    Assert(typeof this == "class");
-
+function WindowStyle::FromFile(filename) {
     // open input file
     local file = File.Open(filename);
 
@@ -70,10 +66,7 @@ function WindowStyle::Load(filename) {
     return WindowStyle(background_mode, corner_colors, edge_offsets, images);
 }
 
-// ---------------------------------------------------
 function WindowStyle::drawWindow(x, y, width, height) {
-    Assert(typeof this == "instance");
-
     // draw background
     _drawBackground(x, y, width, height);
 
@@ -90,7 +83,6 @@ function WindowStyle::drawWindow(x, y, width, height) {
     DrawImage(images[6], x - images[6].width, y + height          );
 }
 
-// ---------------------------------------------------
 function WindowStyle::_drawBackground(x, y, width, height) {
     local background = images[8];
 
@@ -117,7 +109,6 @@ function WindowStyle::_drawBackground(x, y, width, height) {
     }
 }
 
-// ---------------------------------------------------
 function WindowStyle::_drawHorizontalEdge(index, x, y, width, height) {
     local edge = images[index];
     local edge_w = edge.width;
@@ -130,7 +121,6 @@ function WindowStyle::_drawHorizontalEdge(index, x, y, width, height) {
     SetFrameScissor(orig_scissor);
 }
 
-// ---------------------------------------------------
 function WindowStyle::_drawVerticalEdge(index, x, y, width, height) {
     local edge = images[index];
     local edge_w = edge.width;

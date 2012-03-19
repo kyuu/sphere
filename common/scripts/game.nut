@@ -4,7 +4,7 @@ RequireScript("/common/scripts/console")
 RequireScript("/common/scripts/font")
 
 Game <- {
-    // callbacks
+    // callbacks (update and render callbacks must be defined)
     init   = null
     deinit = null
     update = null
@@ -95,8 +95,8 @@ Game <- {
         _showFPS = showFPS
     }
 
-    function addUpdateScript(name, func) {
-        _updateScripts[name] <- func
+    function addUpdateScript(name, script) {
+        _updateScripts[name] <- script
     }
 
     function removeUpdateScript(name) {
@@ -105,13 +105,13 @@ Game <- {
         }
     }
 
-    function addPostEffect(name, func) {
-        _postEffects[name] <- func
+    function addPostRenderScript(name, script) {
+        _postRenderScript[name] <- script
     }
 
-    function removePostEffect(name) {
-        if (name in _postEffects) {
-            delete _postEffects[name]
+    function removePostRenderScript(name) {
+        if (name in _postRenderScript) {
+            delete _postRenderScript[name]
         }
     }
 
@@ -127,50 +127,6 @@ Game <- {
         if (!_console) {
             _console = Console(_systemFont)
         }
-    }
-
-    cache = {
-        function texture(filename) {
-            if (!(filename in _textures)) {
-                _textures[filename] <- Texture.FromFile(filename)
-            }
-            return _textures[filename]
-        }
-
-        function canvas(filename) {
-            if (!(filename in _canvases)) {
-                _canvases[filename] <- Canvas.FromFile(filename)
-            }
-            return _canvases[filename]
-        }
-
-        function sound(filename) {
-            if (!(filename in _sounds)) {
-                _sounds[filename] <- Sound.FromFile(filename)
-            }
-            return _sounds[filename]
-        }
-
-        function soundEffect(filename) {
-            if (!(filename in _soundEffects)) {
-                _soundEffects[filename] <- SoundEffect.FromFile(filename)
-            }
-            return _soundEffects[filename]
-        }
-
-        function font(filename) {
-            if (!(filename in _fonts)) {
-                _fonts[filename] <- Font.FromFile(filename)
-            }
-            return _fonts[filename]
-        }
-
-        // private variables
-        _textures = {}
-        _canvases = {}
-        _sounds = {}
-        _soundEffects = {}
-        _fonts = {}
     }
 
     // private variables
@@ -190,7 +146,7 @@ Game <- {
     _fpsNextUpdate = 0
 
     _updateScripts = {}
-    _postEffects = {}
+    _postRenderScripts = {}
 
     _systemFont = Font.FromFile("/common/system/font.rfn")
     _systemCursor = Texture.FromFile("/common/system/cursor.png")
@@ -204,15 +160,15 @@ function main(...) {
         Game.init(vargv)
     }
 
+    // at this point width and height must be valid
     Assert(Game._width > 0)
     Assert(Game._height > 0)
 
     // set window mode
     SetWindowMode(Game._width * (Game._scale ? 2 : 1), Game._height * (Game._scale ? 2 : 1), Game._fullScreen)
 
-    Game._isRunning = true
-
     // the game loop
+    Game._isRunning = true
     while (!Game._shouldQuit) {
         UpdateSystem()
 
@@ -273,18 +229,17 @@ function main(...) {
         }
 
         if (Game._console) {
-            local exit_console = false
             if (Game._console.update() == false) {
-                exit_console = true
-            }
-            Game._console.render()
-            if (exit_console) {
+                // quit console mode
                 Game._console = null
+            }
+            if (Game._console) {
+                Game._console.render()
             }
         } else {
             // execute update scripts
-            foreach (func in Game._updateScripts) {
-                func()
+            foreach (updateScript in Game._updateScripts) {
+                updateScript()
             }
 
             // call update callback
@@ -296,15 +251,15 @@ function main(...) {
             // call render callback
             Game.render()
 
-            // run post effects
-            foreach (func in Game._postEffects) {
-                func()
+            // execute post-render scripts
+            foreach (postRenderScript in Game._postRenderScripts) {
+                postRenderScript()
             }
         }
 
         // display FPS
         if (Game._showFPS) {
-            Game._systemFont.drawString(5, 5, "FPS: " + Game._currentFPS)
+            Game._systemFont.drawString("FPS: " + Game._currentFPS, 5, 5)
         }
 
         // scale frame

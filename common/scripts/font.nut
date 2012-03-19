@@ -65,43 +65,29 @@ function Font::getStringWidth(text) {
     return width
 }
 
-function Font::drawString(x, y, text, scale = 1.0) {
-    if (scale == 1.0) {
-        foreach (char in text) {
-            DrawImage(chars[char].image, x, y)
-            x += chars[char].width
-        }
-    } else {
-        local cx = x
-        foreach (char in text) {
-            local char_w = chars[char].width
-            local char_h = chars[char].height
-            DrawImageQuad(
-                chars[char].image,
-                cx,                  y,
-                cx + char_w * scale, y,
-                cx + char_w * scale, y + char_h * scale,
-                cx,                  y + char_h * scale
-            )
-            cx += char_w * scale
-        }
+function Font::drawString(text, x, y, mask = WHITE) {
+    foreach (char in text) {
+        DrawImage(chars[char].image, x, y, mask)
+        x += chars[char].width
     }
 }
 
-function Font::drawTextBox(x, y, width, height, text, offset = 0) {
+function Font::drawTextBox(text, x, y, width, height, mask = WHITE) {
+    // backup original scissor
     local orig_scissor = GetFrameScissor()
-    SetFrameScissor(Rect(x, y, width, height))
 
-    y += offset
-    local dy = 0
+    // set scissor to the text box
+    SetFrameScissor(Rect(x, y, width, height))
 
     // word-wrap and draw strings
     local lines = wordWrapString(text, width)
+    local dy = 0
     foreach (line in lines) {
-        drawString(x, y + dy, line)
+        drawString(line, x, y + dy, mask)
         dy += maxHeight
     }
 
+    // restore original scissor
     SetFrameScissor(orig_scissor)
 }
 

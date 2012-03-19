@@ -3,7 +3,26 @@ class Color {
         packed = (r << 24) | (g << 16) | (b << 8) | a
     }
 
+    // the RGBA value
     packed = null
+
+    // predefined common RGBA values
+    static Black   = 0x000000FF
+    static White   = 0xFFFFFFFF
+    static Red     = 0xFF0000FF
+    static Lime    = 0x00FF00FF
+    static Blue    = 0x0000FFFF
+    static Yellow  = 0xFFFF00FF
+    static Cyan    = 0x00FFFFFF
+    static Magenta = 0xFF00FFFF
+    static Gray    = 0x808080FF
+    static Maroon  = 0x800000FF
+    static Green   = 0x008000FF
+    static Navy    = 0x000080FF
+    static Olive   = 0x808000FF
+    static Teal    = 0x008080FF
+    static Purple  = 0x800080FF
+    static Silver  = 0xC0C0C0FF
 }
 
 function Color::_set(idx, val) {

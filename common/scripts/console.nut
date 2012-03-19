@@ -8,7 +8,7 @@ class Console {
         _log = []
         _logIndex = 0
         _output = []
-        _font = Game.getSystemFont()
+        _font = font
     }
 
     function update() {
@@ -100,10 +100,10 @@ class Console {
         // draw command line
         local command_y = Game.getHeight() - (_font.maxHeight + 5)
         DrawRect(0, command_y - 5, Game.getWidth(), _font.maxHeight + 10, CreateColor(100, 100, 100))
-        _font.drawString(5, command_y, _command.slice(_cursorLeft, _command.len()))
+        _font.drawString(_command.slice(_cursorLeft, _command.len()), 5, command_y)
         if (_showCursor) {
             local cursor_x = 5 + _font.getStringWidth(_command.slice(_cursorLeft, _cursorRight))
-            _font.drawString(cursor_x, command_y, "|")
+            _font.drawString("|", cursor_x, command_y)
         }
 
         // draw output
@@ -111,7 +111,7 @@ class Console {
         for (local i = _output.len()-1; i >= 0; --i) {
             local lines = _font.wordWrapString(_output[i], Game.getWidth()-10)
             for (local l = lines.len()-1; l >= 0; --l) {
-                _font.drawString(5, cy, lines[l])
+                _font.drawString(lines[l], 5, cy)
                 cy -= _font.maxHeight + 5
                 if (cy < 0) {
                     break
