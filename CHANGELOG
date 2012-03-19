@@ -1,3 +1,9 @@
+Version 2.0.0 Beta 4
+ - Fixed bug in DumpObject().
+ - Fixed bug in Canvas.cloneSection().
+ - Fixed bug in Texture.updatePixels().
+ - Updated common scripts.
+
 Version 2.0.0 Beta 3
  - Added common scripts game.nut, kbd.nut, mouse.nut and console.nut.
  - Added GetSphereVersion.
