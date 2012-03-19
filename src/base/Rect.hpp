@@ -114,6 +114,12 @@ namespace sphere {
                     (that.lr.y >= ul.y && that.lr.y <= lr.y));
         }
 
+        bool isInside(T x1, T y1, T x2, T y2) const {
+            return ((ul.x >= x1 && ul.x <= x2) &&
+                    (lr.x >= x1 && lr.x <= x2) &&
+                    (ul.y >= y1 && ul.y <= y2) &&
+                    (lr.y >= y1 && lr.y <= y2));
+        }
     };
 
     typedef Rect<i32> Recti;

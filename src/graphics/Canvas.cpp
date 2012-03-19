@@ -39,19 +39,18 @@ namespace sphere {
 
     //-----------------------------------------------------------------
     Canvas*
-    Canvas::cloneSection(const Recti& section)
+    Canvas::cloneSection(const Recti& rect)
     {
-        Recti sec = section.getIntersection(Recti(0, 0, _width - 1, _height - 1));
-        if (!sec.isValid()) {
+        if (!rect.isValid() || !rect.isInside(0, 0, _width - 1, _height - 1)) {
             return 0;
         }
-        CanvasPtr canvas = Create(sec.getWidth(), sec.getHeight());
-        for (int i = 0; i < sec.getHeight(); ++i) {
-            memcpy(canvas->getPixels() + (i * canvas->getWidth()),
-                   _pixels + (i * _width) + sec.getX(),
-                   sec.getWidth() * sizeof(RGBA));
+        CanvasPtr section = Create(rect.getWidth(), rect.getHeight());
+        for (int iy = 0; iy < rect.getHeight(); ++iy) {
+            memcpy(section->getPixels() + (iy * section->getWidth()),
+                   _pixels + ((rect.ul.y + iy) * _width) + rect.ul.x,
+                   rect.getWidth() * sizeof(RGBA));
         }
-        return canvas.release();
+        return section.release();
     }
 
     //-----------------------------------------------------------------
