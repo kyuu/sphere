@@ -776,7 +776,7 @@ namespace sphere {
         }
 
         //-----------------------------------------------------------------
-        bool UpdateTexturePixels(ITexture* texture, Canvas* newPixels, Recti* section)
+        bool UpdateTexturePixels(ITexture* texture, Canvas* newPixels, Recti* rect)
         {
             assert(texture);
             assert(newPixels);
@@ -788,15 +788,15 @@ namespace sphere {
             int w = newPixels->getWidth();
             int h = newPixels->getHeight();
 
-            if (section) {
-                if (!section->isValid() || !Recti(0, 0, newPixels->getWidth() - 1, newPixels->getHeight() - 1).contains(*section)) {
+            if (rect) {
+                if (!rect->isValid() || !rect->isInside(0, 0, t->getSize().width - 1, t->getSize().height - 1)) {
                     return false;
                 }
 
-                x = section->getX();
-                y = section->getY();
-                w = section->getWidth();
-                h = section->getHeight();
+                x = rect->ul.x;
+                y = rect->ul.y;
+                w = rect->getWidth();
+                h = rect->getHeight();
             }
 
             if (w != newPixels->getWidth() ||
