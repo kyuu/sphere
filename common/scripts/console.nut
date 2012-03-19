@@ -109,7 +109,7 @@ class Console {
         // draw output
         local cy = Game.getHeight() - (_font.maxHeight * 2 + 15)
         for (local i = _output.len()-1; i >= 0; --i) {
-            local lines = _font.wrapString(_output[i], Game.getWidth()-10)
+            local lines = _font.wordWrapString(_output[i], Game.getWidth()-10)
             for (local l = lines.len()-1; l >= 0; --l) {
                 _font.drawString(5, cy, lines[l])
                 cy -= _font.maxHeight + 5

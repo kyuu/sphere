@@ -1,24 +1,23 @@
-// ---------------------------------------------------
 class Font {
-
-    constructor(images_) {
-        images    = images_
+    constructor(images) {
+        chars = array(images.len())
         maxHeight = 0
-        foreach (image in images) {
-            if (image.height > maxHeight) {
-                maxHeight = image.height
+        for (local i = 0; i < images.len(); i++) {
+            if (images[i].height > maxHeight) {
+                maxHeight = images[i].height
+            }
+            chars[i] = {
+                image = images[i]
+                width = images[i].width
             }
         }
     }
 
-    images    = null
+    chars     = null
     maxHeight = null
 }
 
-// ---------------------------------------------------
 function Font::FromFile(filename) {
-    Assert(typeof this == "class")
-
     // open input file
     local file = File.Open(filename)
 
@@ -58,33 +57,27 @@ function Font::FromFile(filename) {
     return Font(images)
 }
 
-// ---------------------------------------------------
 function Font::getStringWidth(text) {
-    Assert(typeof this == "instance")
-
     local width = 0
     foreach (char in text) {
-        width += images[char].width
+        width += chars[char].width
     }
     return width
 }
 
-// ---------------------------------------------------
 function Font::drawString(x, y, text, scale = 1.0) {
-    Assert(typeof this == "instance")
-
     if (scale == 1.0) {
         foreach (char in text) {
-            DrawImage(images[char], x, y)
-            x += images[char].width
+            DrawImage(chars[char].image, x, y)
+            x += chars[char].width
         }
     } else {
         local cx = x
         foreach (char in text) {
-            local char_w = images[char].width
-            local char_h = images[char].height
+            local char_w = chars[char].width
+            local char_h = chars[char].height
             DrawImageQuad(
-                images[char],
+                chars[char].image,
                 cx,                  y,
                 cx + char_w * scale, y,
                 cx + char_w * scale, y + char_h * scale,
@@ -95,10 +88,7 @@ function Font::drawString(x, y, text, scale = 1.0) {
     }
 }
 
-// ---------------------------------------------------
 function Font::drawTextBox(x, y, width, height, text, offset = 0) {
-    Assert(typeof this == "instance")
-
     local orig_scissor = GetFrameScissor()
     SetFrameScissor(Rect(x, y, width, height))
 
@@ -115,160 +105,72 @@ function Font::drawTextBox(x, y, width, height, text, offset = 0) {
     SetFrameScissor(orig_scissor)
 }
 
-// ---------------------------------------------------
-function Font::wrapString(text, width) {
-    Assert(typeof this == "instance")
-
-    local lines = []
-    local l = 0
-    local r = 0
-    local w = 0
-    local cw = 0
-    local len = text.len()
-
-    for (; r < len; ++r) {
-        cw = images[text[r]].width
-        if (w + cw > width) {
-            lines.push(text.slice(l, r))
-            l = r
-            w = cw
-        } else {
-            w += cw
-        }
-    }
-
-    if (w > 0) {
-        lines.push(text.slice(l, r))
-    }
-
-    return lines
-}
-
-// ---------------------------------------------------
 function Font::wordWrapString(text, width) {
-    Assert(typeof this == "instance")
-
-    local space_w = getStringWidth(" ");
-    local tab_w   = getStringWidth("    ");
-    local lines = [""];
-    local dx = 0;
-    local word = "";
-    local word_w = 0;
-
-    foreach (char in text) {
-        if (char == ' ') { // space
-            if (dx + word_w + space_w > width) { // word goes on a new line
-                dx = word_w + space_w;
-                lines.append(word + " ");
-            } else { // word is tacked on to the last line
-                lines[lines.len()-1] += word + " ";
-                dx += word_w + space_w;
-            }
-            word = "";
-            word_w = 0;
-        } else if (char == '\t') { // tab
-            if (dx + word_w + tab_w > width) { // word goes on a new line
-                dx = word_w + tab_w;
-                lines.append(word + "    ");
-            } else { // word is tacked on to the last line
-                lines[lines.len()-1] += word + "    ";
-                dx += word_w + tab_w;
-            }
-            word = "";
-            word_w = 0;
-        } else if (char == '\n') { // new line
-            lines[lines.len()-1] += word;
-            dx = 0;
-            lines.append("");
-            word = "";
-            word_w = 0;
-        } else {
-            local char_w = images[char].width;
-            if (word_w + char_w > width && dx == 0) { // split word if it's too wide for one line
-                lines[lines.len()-1] += word;
-                lines.append("");
-                word = "";
-                word_w = 0;
-            } else if (dx + word_w + char_w > width) { // just start a new line
-                dx = 0;
-                lines.append("");
-            }
-            word += char.tochar();
-            word_w += char_w;
-        }
-    }
-    lines[lines.len()-1] += word;
-/*
     local lines = []
-    local l = 0
-    local r = 0
-    local w = 0
-    local ws = 0
-    local ww = 0
-    local c = 0
-    local cw = 0
-
+    local lc = 0 // line char count
+    local lw = 0 // line width
+    local wc = 0 // word char count
+    local ww = 0 // word width
     local len = text.len()
+    local i = 0
 
-    for (; r < len; ++r) {
-        c  = text[r]
-        cw = images[c].width
+    for (; i < len; ++i) {
+        local c  = text[i]
+        local cw = chars[c].width
 
         if (c == ' ') {
-            if (w > 0) {
-                if (w + cw > width) {
-                    lines.push(text.slice(l, r))
-                    w = 0
-                    ww = 0
-                } else {
-                    w += cw
-                    ww = 0
-                }
+            if (lw + ww > width) {
+                lines.push(text.slice(i-(lc+wc), i-wc))
+                lc = 0
+                lw = 0
             }
+            lc += wc
+            lw += ww
+            wc = 0
+            ww = 0
+            if (lw + cw > width) {
+                lines.push(text.slice(i-lc, i))
+                lc = 0
+                lw = 0
+            }
+            ++lc
+            lw += cw
         } else if (c == '\n') {
-            if (w > 0) {
-                lines.push(text.slice(l, r))
-                w = 0
-                ww = 0
+            if (lw + ww > width) {
+                lines.push(text.slice(i-(lc+wc), i-wc))
+                lc = 0
+                lw = 0
+            }
+            lc += wc
+            lw += ww
+            wc = 0
+            ww = 0
+            if (lw > 0) {
+                lines.push(text.slice(i-lc, i))
+                lc = 0
+                lw = 0
             } else {
                 lines.push("")
             }
         } else {
-            if (w > 0) {
-                if (w + cw > width) {
-                    if (ww > 0) {
-                        lines.push(text.slice(l, ws))
-                        l = ws
-                        w = ww + cw
-                        ww += cw
-                    } else {
-                        lines.push(text.slice(l, r))
-                        l = r
-                        w = cw
-                        ws = r
-                        ww = cw
-                    }
-                } else {
-                    w += cw
-                    if (ww > 0) {
-                        ww += cw
-                    } else {
-                        ws = r
-                        ww = cw
-                    }
+            if (ww + cw > width) {
+                if (lw > 0) {
+                    lines.push(text.slice(i-(lc+wc), i-wc))
+                    lc = 0
+                    lw = 0
                 }
-            } else {
-                l = r
-                w = cw
-                ws = r
-                ww = cw
+                lines.push(text.slice(i-wc, i))
+                wc = 0
+                ww = 0
             }
+            ++wc
+            ww += cw
         }
     }
 
-    if (w > 0) {
-        lines.push(text.slice(l, r))
+    if (lw + ww > 0) {
+        lines.push(text.slice(i-(lc+wc), i))
     }
-*/
+
     return lines
 }

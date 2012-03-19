@@ -926,8 +926,8 @@ namespace sphere {
             // DumpObject(object, stream)
             static SQInteger _script_DumpObject(HSQUIRRELVM v)
             {
-                CHECK_NARGS(1)
-                GET_ARG_STREAM(1, stream)
+                CHECK_NARGS(2)
+                GET_ARG_STREAM(2, stream)
                 if (!stream->isOpen() || !stream->isWriteable()) {
                     THROW_ERROR("Invalid stream")
                 }
