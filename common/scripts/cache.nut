@@ -112,32 +112,32 @@ Cache <- {
 
     function loadState(state) {
         foreach (filename in state.textures) {
-            if (!(filename in _textures) {
+            if (!(filename in _textures)) {
                 _textures[filename] <- Texture.FromFile(filename)
             }
         }
         foreach (filename in state.canvases) {
-            if (!(filename in _canvases) {
+            if (!(filename in _canvases)) {
                 _canvases[filename] <- Canvas.FromFile(filename)
             }
         }
         foreach (filename in state.sounds) {
-            if (!(filename in _sounds) {
+            if (!(filename in _sounds)) {
                 _sounds[filename] <- Sound.FromFile(filename)
             }
         }
         foreach (filename in state.soundEffects) {
-            if (!(filename in _soundEffects) {
+            if (!(filename in _soundEffects)) {
                 _soundEffects[filename] <- SoundEffect.FromFile(filename)
             }
         }
         foreach (filename in state.fonts) {
-            if (!(filename in _fonts) {
+            if (!(filename in _fonts)) {
                 _fonts[filename] <- Font.FromFile(filename)
             }
         }
         foreach (filename in state.windowStyles) {
-            if (!(filename in _windowStyles) {
+            if (!(filename in _windowStyles)) {
                 _windowStyles[filename] <- WindowStyle.FromFile(filename)
             }
         }
